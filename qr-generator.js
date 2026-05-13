@@ -13,7 +13,8 @@ const AUTHORIZED_EMAILS = [
     'iace2318i@gmail.com',
     'wq.rodalyn@gmail.com',
     'beta22926@gmail.com', 
-    'johnrogerargarin@gmail.com'
+    'johnrogerargarin@gmail.com',
+    'irigacityppo@gmail.com'
 ];
 
 const TEMPLATE_HEADERS = [
