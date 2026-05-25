@@ -21,7 +21,7 @@ const TEMPLATE_HEADERS = [
     'PS ID',
     'Full Name',
     'Gender',
-    'Age',
+    'Date of Birth',
     'Offense Category',
     'Criminal Case Number',
     'Start Date',
@@ -32,7 +32,7 @@ const TEMPLATE_HEADERS = [
 ];
 
 // ============================================
-// SAFE STRING HELPER - FIXES THE replace is not a function error
+// SAFE STRING HELPER
 // ============================================
 
 function toSafeString(value) {
@@ -52,7 +52,104 @@ function escapeHtml(str) {
 }
 
 // ============================================
-// DATE HELPER FUNCTIONS (Added missing functions)
+// DATE FORMATTING FUNCTIONS
+// ============================================
+
+function formatDateToMMDDYY(date) {
+    if (!date) return '';
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return '';
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const year = String(d.getFullYear()).slice(-2);
+    return `${month}/${day}/${year}`;
+}
+
+function formatDisplayDate(value) {
+    if (!value) return 'N/A';
+    // If it's already in MM/DD/YY format, return as is
+    if (/^\d{2}\/\d{2}\/\d{2}$/.test(value)) {
+        return value;
+    }
+    // Try to parse as date
+    const date = new Date(value);
+    if (!isNaN(date.getTime())) {
+        return formatDateToMMDDYY(date);
+    }
+    return value;
+}
+
+function parseMMDDYY(dateStr) {
+    if (!dateStr) return null;
+    const match = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})/);
+    if (match) {
+        const month = parseInt(match[1], 10);
+        const day = parseInt(match[2], 10);
+        let year = parseInt(match[3], 10);
+        year = 2000 + year;
+        const date = new Date(year, month - 1, day);
+        if (!isNaN(date.getTime())) {
+            return date;
+        }
+    }
+    return null;
+}
+
+function formatExcelDate(value) {
+    if (!value) return '';
+    
+    const strValue = String(value).trim();
+    if (!strValue) return '';
+
+    // Already in YYYY-MM-DD (from date input)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(strValue)) {
+        return strValue;
+    }
+
+    // MM/DD/YY format from Excel template
+    if (/^\d{2}\/\d{2}\/\d{2}$/.test(strValue)) {
+        const parsed = parseMMDDYY(strValue);
+        if (parsed) {
+            return parsed.toISOString().split('T')[0];
+        }
+    }
+
+    // Excel serial number
+    if (typeof value === 'number') {
+        const date = new Date((value - 25569) * 86400 * 1000);
+        if (!isNaN(date.getTime())) {
+            return date.toISOString().split('T')[0];
+        }
+    }
+
+    // other string formats
+    const date = new Date(strValue);
+    if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+    }
+
+    return '';
+}
+
+// ============================================
+// AGE CALCULATION FUNCTION
+// ============================================
+
+function calculateAge(dateOfBirth) {
+    if (!dateOfBirth) return '';
+    const dob = new Date(dateOfBirth);
+    if (isNaN(dob.getTime())) return '';
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const monthDiff = today.getMonth() - dob.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+        age--;
+    }
+    return age;
+}
+
+// ============================================
+// DATE HELPER FUNCTIONS
 // ============================================
 
 window.addYears = function(years) {
@@ -100,7 +197,7 @@ window.clearDates = function() {
 };
 
 // ============================================
-// SESSION CHECK - SHARED WITH INDEX.HTML
+// SESSION CHECK
 // ============================================
 
 function checkSession() {
@@ -165,39 +262,12 @@ async function generateQRCode(data, size = 300) {
     });
 }
 
-function formatExcelDate(value) {
-    if (!value) return '';
-    
-    // Convert to string safely
-    const strValue = String(value).trim();
-    if (!strValue) return '';
-
-    // already correct (YYYY-MM-DD)
-    if (/^\d{4}-\d{2}-\d{2}$/.test(strValue)) {
-        return strValue;
-    }
-
-    // Excel serial number
-    if (typeof value === 'number') {
-        const date = new Date((value - 25569) * 86400 * 1000);
-        if (!isNaN(date.getTime())) {
-            return date.toISOString().split('T')[0];
-        }
-    }
-
-    // other string formats
-    const date = new Date(strValue);
-    if (!isNaN(date.getTime())) {
-        return date.toISOString().split('T')[0];
-    }
-
-    return '';
-}
-
 function createSingleIDCardHTML(pusId, pusName, startDate, endDate, cluster, qrImageData) {
     const issueDate = new Date().toLocaleDateString();
     const displayName = toSafeString(pusName) || "N/A";
     const displayCluster = toSafeString(cluster) || "N/A";
+    const displayStartDate = formatDisplayDate(startDate);
+    const displayEndDate = formatDisplayDate(endDate);
     return `
         <div class="official-id-card" style="width:337px; height:212px; background:white; border-radius:12px; overflow:hidden; font-family:'Segoe UI', Arial, sans-serif; box-shadow:0 2px 5px rgba(0,0,0,0.1); position:relative; display:flex; flex-direction:column;">
             <div style="background:linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color:white; padding:6px 0; text-align:center; flex-shrink:0;">
@@ -220,7 +290,7 @@ function createSingleIDCardHTML(pusId, pusName, startDate, endDate, cluster, qrI
                     </div>
                     <div>
                         <div style="font-size:7px; font-weight:bold; color:#555;">SUPERVISION PERIOD</div>
-                        <div style="font-size:8px; color:#333;">${escapeHtml(startDate) || 'N/A'} to ${escapeHtml(endDate) || 'N/A'}</div>
+                        <div style="font-size:8px; color:#333;">${displayStartDate} to ${displayEndDate}</div>
                     </div>
                 </div>
                 <div style="width:75px; text-align:center; flex-shrink:0;">
@@ -286,6 +356,13 @@ function showQRModal(qrCanvas, clientData) {
     ctx.drawImage(qrCanvas, 0, 0, 180, 180);
     if (modalQrcode) modalQrcode.appendChild(canvas);
     
+    // Calculate age from date of birth for display
+    const ageValue = clientData.dateOfBirth ? calculateAge(clientData.dateOfBirth) : '';
+    const ageDisplay = ageValue ? `${ageValue} years` : 'N/A';
+    const displayDOB = formatDisplayDate(clientData.dateOfBirth);
+    const displayStartDate = formatDisplayDate(clientData.startDate);
+    const displayEndDate = formatDisplayDate(clientData.endDate);
+    
     if (modalClientInfo) {
         modalClientInfo.innerHTML = `
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px;">
@@ -295,16 +372,18 @@ function showQRModal(qrCanvas, clientData) {
                 <div>${escapeHtml(clientData.pusName)}</div>
                 <div><strong>⚥ Gender:</strong></div>
                 <div>${escapeHtml(clientData.gender)}</div>
-                <div><strong>🎂 Age:</strong></div>
-                <div>${escapeHtml(clientData.age)}</div>
+                <div><strong>🎂 Date of Birth:</strong></div>
+                <div>${escapeHtml(displayDOB)}</div>
+                <div><strong>📊 Age:</strong></div>
+                <div>${escapeHtml(ageDisplay)}</div>
                 <div><strong>⚖️ Offense:</strong></div>
                 <div>${escapeHtml(clientData.offenseCategory)}</div>
                 <div><strong>⚖️ Case No.:</strong></div>
                 <div>${escapeHtml(clientData.caseNumber || 'N/A')}</div>
                 <div><strong>📅 Start Date:</strong></div>
-                <div>${escapeHtml(clientData.startDate || 'N/A')}</div>
+                <div>${escapeHtml(displayStartDate)}</div>
                 <div><strong>📅 End Date:</strong></div>
-                <div>${escapeHtml(clientData.endDate || 'N/A')}</div>
+                <div>${escapeHtml(displayEndDate)}</div>
                 <div><strong>🏠 Address:</strong></div>
                 <div>${escapeHtml(clientData.address || 'N/A')}</div>
                 <div><strong>👮 Officer:</strong></div>
@@ -344,10 +423,11 @@ document.getElementById('qrForm')?.addEventListener('submit', async function(e) 
     try {
         const pusId = document.getElementById('pusId')?.value.trim() || '';
         const pusName = document.getElementById('pusName')?.value.trim() || '';
-        const age = document.getElementById('age')?.value.trim() || '';
+        const dateOfBirthElem = document.getElementById('dateOfBirth');
+        const dateOfBirth = dateOfBirthElem ? dateOfBirthElem.value : '';
 
-        if (!pusId || !pusName || !age) {
-            alert('Please fill in PS ID, Full Name, and Age');
+        if (!pusId || !pusName || !dateOfBirth) {
+            alert('Please fill in PS ID, Full Name, and Date of Birth');
             return;
         }
 
@@ -358,11 +438,11 @@ document.getElementById('qrForm')?.addEventListener('submit', async function(e) 
             pusId, 
             pusName, 
             gender: document.getElementById('gender')?.value || 'Female', 
-            age: parseInt(age), 
+            dateOfBirth: dateOfBirth,
             offenseCategory: document.getElementById('offenseCategory')?.value || 'Drug Offense',
             caseNumber: document.getElementById('caseNumber')?.value || '',
-            startDate: startDateElem ? formatExcelDate(startDateElem.value) : '', 
-            endDate: endDateElem ? formatExcelDate(endDateElem.value) : '',
+            startDate: startDateElem ? startDateElem.value : '', 
+            endDate: endDateElem ? endDateElem.value : '',
             address: document.getElementById('address')?.value || '',
             supervisingOfficer: document.getElementById('officer')?.value || '', 
             cluster: document.getElementById('cluster')?.value || '' 
@@ -457,11 +537,11 @@ document.getElementById('downloadTemplateBtn')?.addEventListener('click', functi
             'PS-2024-001',
             'Dela Cruz, Juan A.',
             'Male',
-            '35',
+            '05/15/90',
             'Drug Offense',
             'RTC-2024-00123',
-            '2023-08-15',
-            '2026-08-15',
+            '08/15/23',
+            '08/15/26',
             '123 Purok 1, Brgy. San Juan, Iriga City',
             'SSPO JANET B. PAVIA',
             'IRIGA'
@@ -470,11 +550,11 @@ document.getElementById('downloadTemplateBtn')?.addEventListener('click', functi
             'PS-2024-002',
             'Reyes, Maria S.',
             'Female',
-            '42',
+            '09/20/82',
             'Non-Drug Offense',
             'RTC-2024-00456',
-            '2023-09-01',
-            '2026-09-01',
+            '09/01/23',
+            '09/01/26',
             '456 Mabini St., Iriga City',
             'SSPO JANET B. PAVIA',
             'NABUA'
@@ -556,21 +636,32 @@ document.getElementById('importBtn')?.addEventListener('click', async function()
             const row = data[i];
             if (progressFill) progressFill.style.width = `${((i+1)/data.length)*100}%`;
             
+            // Try different possible column names for Date of Birth
+            let dateOfBirth = row['Date of Birth'] || row['dateOfBirth'] || row['DOB'] || row['Birth Date'] || '';
+            if (dateOfBirth) {
+                dateOfBirth = formatExcelDate(dateOfBirth);
+            }
+            
+            let startDate = row['Start Date'] || row['startDate'] || '';
+            let endDate = row['End Date'] || row['endDate'] || '';
+            
+            if (startDate) startDate = formatExcelDate(startDate);
+            if (endDate) endDate = formatExcelDate(endDate);
+            
             const pusData = {
                 pusId: row['PS ID'] || row['pusId'] || `PS-${Date.now()}-${i}`,
                 pusName: row['Full Name'] || row['pusName'] || row['NAME OF CLIENT'] || 'Unknown',
                 gender: row['Gender'] || row['gender'] || 'Female',
-                age: parseInt(row['Age'] || row['age'] || 0),
+                dateOfBirth: dateOfBirth,
                 offenseCategory: row['Offense Category'] || row['offenseCategory'] || 'Drug Offense',
-                startDate: formatExcelDate(row['Start Date'] || row['startDate']),
-                endDate: formatExcelDate(row['End Date'] || row['endDate']),
+                startDate: startDate,
+                endDate: endDate,
                 address: row['Address'] ? String(row['Address']).trim() : '',
                 caseNumber: row['Criminal Case Number'] ? String(row['Criminal Case Number']).trim() : '',
                 supervisingOfficer: row['Supervising Officer'] || row['supervisingOfficer'] || '',
                 cluster: row['Cluster'] || row['cluster'] || ''
             };
             
-            if (isNaN(pusData.age)) pusData.age = 0;
             const qrData = JSON.stringify(pusData);
             const canvas = await generateQRCode(qrData, 300);
             const qrImageData = canvas.toDataURL('image/png');
@@ -601,19 +692,24 @@ function displayBatchResults(qrs) {
     const batchList = document.getElementById('batchListModal');
     if (!batchList) return;
     
-    batchList.innerHTML = qrs.map((qr, index) => `
-        <div class="batch-item-modal">
-            <div class="batch-info-modal">
-                <div class="batch-name-modal">${escapeHtml(qr.data.pusName)}</div>
-                <div class="batch-details-modal">ID: ${escapeHtml(qr.data.pusId)} | ${escapeHtml(qr.data.offenseCategory)}</div>
+    batchList.innerHTML = qrs.map((qr, index) => {
+        const ageDisplay = qr.data.dateOfBirth ? calculateAge(qr.data.dateOfBirth) : '';
+        const ageText = ageDisplay ? ` | Age: ${ageDisplay}` : '';
+        const displayDOB = formatDisplayDate(qr.data.dateOfBirth);
+        return `
+            <div class="batch-item-modal">
+                <div class="batch-info-modal">
+                    <div class="batch-name-modal">${escapeHtml(qr.data.pusName)}</div>
+                    <div class="batch-details-modal">ID: ${escapeHtml(qr.data.pusId)} | DOB: ${escapeHtml(displayDOB)}${ageText}</div>
+                </div>
+                <div class="batch-actions-modal">
+                    <button class="btn-small" onclick="downloadSingleBatch(${index})">📥 QR</button>
+                    <button class="btn-small" onclick="downloadSingleBatchCard(${index})">🆔 Card</button>
+                    <button class="btn-small" onclick="printSingleBatchCard(${index})">🖨️ Print</button>
+                </div>
             </div>
-            <div class="batch-actions-modal">
-                <button class="btn-small" onclick="downloadSingleBatch(${index})">📥 QR</button>
-                <button class="btn-small" onclick="downloadSingleBatchCard(${index})">🆔 Card</button>
-                <button class="btn-small" onclick="printSingleBatchCard(${index})">🖨️ Print</button>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 window.downloadSingleBatch = function(index) { 
@@ -636,7 +732,6 @@ window.printSingleBatchCard = function(index) {
     if(qr) printSingleCard(qr.data.pusId, qr.data.pusName, qr.data.startDate, qr.data.endDate, qr.data.cluster, qr.imageUrl); 
 };
 
-// Modal version of mass download buttons
 document.getElementById('massDownloadQrsBtnModal')?.addEventListener('click', async function() {
     if(batchQRs.length===0){ alert('No QR codes'); return; }
     const zip = new JSZip();
@@ -734,7 +829,12 @@ function displayPUSList(records) {
         container.innerHTML = '<p>No records yet. Generate QR codes to add persons.</p>'; 
         return; 
     }
-    container.innerHTML = records.map(record => `<div class="batch-item" onclick="loadPUS('${record.pusId}')"><div class="batch-info"><div class="batch-name">${escapeHtml(record.pusName)} <span style="font-size:9px; background:#2a5298; color:white; padding:2px 6px; border-radius:10px;">${escapeHtml(record.pusId)}</span></div><div class="batch-details">${record.offenseCategory} | ${record.cluster||'No Cluster'}</div></div><button class="btn-small" onclick="event.stopPropagation(); regenerateQR('${record.pusId}')">🔄 Regenerate</button></div>`).join('');
+    container.innerHTML = records.map(record => {
+        const ageDisplay = record.dateOfBirth ? calculateAge(record.dateOfBirth) : '';
+        const ageText = ageDisplay ? ` | Age: ${ageDisplay}` : '';
+        const displayDOB = formatDisplayDate(record.dateOfBirth);
+        return `<div class="batch-item" onclick="loadPUS('${record.pusId}')"><div class="batch-info"><div class="batch-name">${escapeHtml(record.pusName)} <span style="font-size:9px; background:#2a5298; color:white; padding:2px 6px; border-radius:10px;">${escapeHtml(record.pusId)}</span></div><div class="batch-details">${record.offenseCategory} | DOB: ${escapeHtml(displayDOB)}${ageText} | ${record.cluster||'No Cluster'}</div></div><button class="btn-small" onclick="event.stopPropagation(); regenerateQR('${record.pusId}')">🔄 Regenerate</button></div>`;
+    }).join('');
 }
 
 window.loadPUS = function(pusId) { 
@@ -744,7 +844,7 @@ window.loadPUS = function(pusId) {
         const pusIdElem = document.getElementById('pusId');
         const pusNameElem = document.getElementById('pusName');
         const genderElem = document.getElementById('gender');
-        const ageElem = document.getElementById('age');
+        const dateOfBirthElem = document.getElementById('dateOfBirth');
         const offenseElem = document.getElementById('offenseCategory');
         const caseNumElem = document.getElementById('caseNumber');
         const startDateElem = document.getElementById('startDate');
@@ -756,7 +856,7 @@ window.loadPUS = function(pusId) {
         if (pusIdElem) pusIdElem.value = record.pusId; 
         if (pusNameElem) pusNameElem.value = record.pusName; 
         if (genderElem) genderElem.value = record.gender; 
-        if (ageElem) ageElem.value = record.age; 
+        if (dateOfBirthElem) dateOfBirthElem.value = record.dateOfBirth || ''; 
         if (offenseElem) offenseElem.value = record.offenseCategory; 
         if (caseNumElem) caseNumElem.value = record.caseNumber || '';
         if (startDateElem) startDateElem.value = record.startDate || ''; 
@@ -799,10 +899,9 @@ function clearForm() {
 
 document.getElementById('templateHelpLink')?.addEventListener('click',(e)=>{ 
     e.preventDefault(); 
-    alert("📋 Required headers: PS ID, Full Name, Gender, Age, Offense Category, Criminal Case Number, Start Date, End Date, Address, Supervising Officer, Cluster"); 
+    alert("📋 Required headers: PS ID, Full Name, Gender, Date of Birth, Offense Category, Criminal Case Number, Start Date, End Date, Address, Supervising Officer, Cluster\n\n📅 Date format in Excel: MM/DD/YY (e.g., 05/15/90 for May 15, 1990)"); 
 });
 
-// Logout button
 document.getElementById('logoutBtn')?.addEventListener('click', function() {
     logout();
 });
@@ -828,7 +927,7 @@ window.closeBatchModal = function() {
 };
 
 // ============================================
-// INITIALIZATION - CHECK SESSION ONLY
+// INITIALIZATION
 // ============================================
 
 checkSession();

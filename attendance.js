@@ -3,7 +3,7 @@
 // ============================================
 
 const GOOGLE_CLIENT_ID = '615931175551-cnd4ocg43ktu56jpmhdm9ulmbn5tedq1.apps.googleusercontent.com';
-const APPS_SCRIPT_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbxKIs60sISbhawO3CbCXVbHmi5sju786Ly6nYd-2z3s9bOXEruZk3e0LCdVPUX84Jl-/exec';
+const APPS_SCRIPT_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbzmAYGwIpdnUXvjh222YgV9ZyDw-5QBByLE_1BfBoUnnC2ssw7r-1s8DKasczooUqNE/exec';
 
 const AUTHORIZED_EMAILS = [
     'iace2318i@gmail.com',
@@ -13,24 +13,89 @@ const AUTHORIZED_EMAILS = [
     'irigacityppo@gmail.com'
 ];
 
-// Helper function to format date from MM-DD-YYYY to readable format
+// ============================================
+// AGE CALCULATION FROM DATE OF BIRTH
+// ============================================
+
+function calculateAgeFromDOB(dateOfBirth) {
+    if (!dateOfBirth || dateOfBirth === 'N/A') return 'N/A';
+    try {
+        let dob;
+        
+        // Handle YYYY-MM-DD format
+        if (dateOfBirth.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            dob = new Date(dateOfBirth);
+        }
+        // Handle MM/DD/YY format
+        else if (dateOfBirth.match(/^\d{2}\/\d{2}\/\d{2}$/)) {
+            const parts = dateOfBirth.split('/');
+            const month = parseInt(parts[0], 10) - 1;
+            const day = parseInt(parts[1], 10);
+            let year = 2000 + parseInt(parts[2], 10);
+            dob = new Date(year, month, day);
+        }
+        // Handle MM-DD-YYYY format
+        else if (dateOfBirth.includes('-')) {
+            const parts = dateOfBirth.split('-');
+            if (parts[0].length === 4) {
+                // YYYY-MM-DD
+                dob = new Date(dateOfBirth);
+            } else {
+                // MM-DD-YYYY
+                dob = new Date(parseInt(parts[2], 10), parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
+            }
+        }
+        else {
+            dob = new Date(dateOfBirth);
+        }
+        
+        if (isNaN(dob.getTime())) return 'N/A';
+        
+        const today = new Date();
+        let age = today.getFullYear() - dob.getFullYear();
+        const monthDiff = today.getMonth() - dob.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+            age--;
+        }
+        return age;
+    } catch (e) {
+        return 'N/A';
+    }
+}
+
+// Helper function to format date from various formats to readable format
 function formatReadableDate(dateStr) {
     if (!dateStr || dateStr === 'N/A') return 'N/A';
     try {
         let date;
-
-        if (dateStr.includes('-')) {
+        
+        // Handle YYYY-MM-DD format
+        if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            date = new Date(dateStr);
+        }
+        // Handle MM/DD/YY format
+        else if (dateStr.match(/^\d{2}\/\d{2}\/\d{2}$/)) {
+            const parts = dateStr.split('/');
+            const month = parseInt(parts[0], 10) - 1;
+            const day = parseInt(parts[1], 10);
+            let year = 2000 + parseInt(parts[2], 10);
+            date = new Date(year, month, day);
+        }
+        // Handle MM-DD-YYYY format
+        else if (dateStr.includes('-')) {
             const parts = dateStr.split('-');
-
             if (parts[0].length === 4) {
-                // YYYY-MM-DD
                 date = new Date(dateStr);
             } else {
-                // MM-DD-YYYY
-                date = new Date(parts[2], parts[0] - 1, parts[1]);
+                date = new Date(parseInt(parts[2], 10), parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
             }
         }
-
+        else {
+            date = new Date(dateStr);
+        }
+        
+        if (isNaN(date.getTime())) return dateStr;
+        
         return date.toLocaleDateString('en-US', { 
             year: 'numeric', 
             month: 'long', 
@@ -39,6 +104,29 @@ function formatReadableDate(dateStr) {
     } catch (e) {
         return dateStr;
     }
+}
+
+function formatDisplayDate(value) {
+    if (!value) return 'N/A';
+    if (value === 'N/A') return 'N/A';
+    
+    // If it's already in MM/DD/YY format, convert to readable
+    if (/^\d{2}\/\d{2}\/\d{2}$/.test(value)) {
+        const parts = value.split('/');
+        const month = parseInt(parts[0], 10);
+        const day = parseInt(parts[1], 10);
+        let year = 2000 + parseInt(parts[2], 10);
+        const date = new Date(year, month - 1, day);
+        if (!isNaN(date.getTime())) {
+            return date.toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+        }
+    }
+    
+    return formatReadableDate(value);
 }
 
 let savedUrl = localStorage.getItem('appsScriptUrl');
@@ -212,7 +300,7 @@ function scanQR() {
             scanning = false;
             closeScanner();
             processQR(code.data);
-            return; // ✅ stop loop immediately
+            return;
         }
     }
 
@@ -237,7 +325,7 @@ function closeScanner() {
 async function processQR(qrData) {
     showMessage('Processing QR code...', 'info');
 
-    // ✅ Parse QR safely
+    // Parse QR safely
     let data;
     try {
         data = JSON.parse(qrData);
@@ -246,10 +334,17 @@ async function processQR(qrData) {
         return;
     }
 
-    // ✅ Store data
+    // Store data
     currentPUSData = data;
 
-    // ✅ Display data safely
+    // Calculate age from date of birth
+    let ageDisplay = 'N/A';
+    if (data.dateOfBirth) {
+        const calculatedAge = calculateAgeFromDOB(data.dateOfBirth);
+        ageDisplay = calculatedAge !== 'N/A' ? `${calculatedAge} years` : 'N/A';
+    }
+
+    // Display data safely
     const setText = (id, value) => {
         const el = document.getElementById(id);
         if (el) el.textContent = value;
@@ -257,21 +352,25 @@ async function processQR(qrData) {
     
     setText('displayPUSId', data.pusId || data.clientId || 'N/A');
     setText('displayPUSName', data.pusName || data.clientName || 'N/A');
-    setText('displayGenderAge', `${data.gender || 'N/A'} / ${data.age || 'N/A'}`);
+    
+    // Display Gender and calculated Age
+    const displayDOB = data.dateOfBirth ? formatDisplayDate(data.dateOfBirth) : 'N/A';
+    setText('displayGenderAge', `${data.gender || 'N/A'} / Age: ${ageDisplay} (DOB: ${displayDOB})`);
+    
     setText('displayOffense', data.offenseCategory || 'N/A');
     setText('displayCaseNumber', data.caseNumber || 'N/A');
     setText('displayAddress', data.address || 'N/A');
     
-    const startDateFormatted = formatReadableDate(data.startDate);
-    const endDateFormatted = formatReadableDate(data.endDate);
+    const startDateFormatted = formatDisplayDate(data.startDate);
+    const endDateFormatted = formatDisplayDate(data.endDate);
     setText('displayPeriod', `${startDateFormatted} to ${endDateFormatted}`);
     
     setText('displayOfficer', data.supervisingOfficer || 'N/A');
     setText('displayCluster', data.cluster || 'N/A');
 
-    // ✅ Show UI
-    pusInfoSection?.style && (pusInfoSection.style.display = 'block');
-    attendanceForm?.style && (attendanceForm.style.display = 'block');
+    // Show UI
+    if (pusInfoSection) pusInfoSection.style.display = 'block';
+    if (attendanceForm) attendanceForm.style.display = 'block';
 
     showMessage('✓ Person Under Supervision loaded. Record attendance.', 'success');
 }
@@ -295,12 +394,20 @@ async function submitAttendance(e) {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Submitting...';
     
+    // Calculate age from date of birth for submission
+    let calculatedAge = '';
+    if (currentPUSData.dateOfBirth) {
+        const age = calculateAgeFromDOB(currentPUSData.dateOfBirth);
+        calculatedAge = age !== 'N/A' ? age.toString() : '';
+    }
+    
     const attendanceData = {
         employeeEmail: currentUser.email,
         clientName: currentPUSData.pusName || currentPUSData.clientName,
         clientId: currentPUSData.pusId || currentPUSData.clientId,
         gender: currentPUSData.gender,
-        age: currentPUSData.age,
+        dateOfBirth: currentPUSData.dateOfBirth,
+        age: calculatedAge, // Send calculated age
         offenseCategory: currentPUSData.offenseCategory,
         caseNumber: currentPUSData.caseNumber,
         address: currentPUSData.address,
@@ -325,8 +432,8 @@ async function submitAttendance(e) {
         showMessage('✓ Attendance recorded successfully!', 'success');
         
         setTimeout(() => {
-            pusInfoSection.style.display = 'none';
-            attendanceForm.style.display = 'none';
+            if (pusInfoSection) pusInfoSection.style.display = 'none';
+            if (attendanceForm) attendanceForm.style.display = 'none';
             attendanceForm?.reset();
             currentPUSData = null;
         }, 2000);
@@ -348,34 +455,40 @@ function showMessage(msg, type) {
 
 adminLink?.addEventListener('click', (e) => {
     e.preventDefault();
-    configSection.style.display =
-        configSection.style.display === 'none' ? 'block' : 'none';
+    if (configSection) {
+        configSection.style.display =
+            configSection.style.display === 'none' ? 'block' : 'none';
+    }
 
     if (scriptUrlInput) {
         scriptUrlInput.value = APPS_SCRIPT_URL;
     }
 });
 
-saveUrlBtn.onclick = () => {
-    const url = scriptUrlInput.value.trim();
-    if (url) {
-        APPS_SCRIPT_URL = url;
-        localStorage.setItem('appsScriptUrl', url);
-        showMessage('✓ URL saved successfully!', 'success');
-        configSection.style.display = 'none';
-    } else {
-        showMessage('Please enter a valid URL', 'error');
-    }
-};
+if (saveUrlBtn) {
+    saveUrlBtn.onclick = () => {
+        const url = scriptUrlInput.value.trim();
+        if (url) {
+            APPS_SCRIPT_URL = url;
+            localStorage.setItem('appsScriptUrl', url);
+            showMessage('✓ URL saved successfully!', 'success');
+            if (configSection) configSection.style.display = 'none';
+        } else {
+            showMessage('Please enter a valid URL', 'error');
+        }
+    };
+}
 
-resetUrlBtn.onclick = () => {
-    localStorage.removeItem('appsScriptUrl');
-    APPS_SCRIPT_URL = APPS_SCRIPT_URL_DEFAULT;
-    if (scriptUrlInput) {
-        scriptUrlInput.value = APPS_SCRIPT_URL_DEFAULT;
-    }
-    showMessage('✓ URL reset to default. Click "Save URL" to confirm.', 'success');
-};
+if (resetUrlBtn) {
+    resetUrlBtn.onclick = () => {
+        localStorage.removeItem('appsScriptUrl');
+        APPS_SCRIPT_URL = APPS_SCRIPT_URL_DEFAULT;
+        if (scriptUrlInput) {
+            scriptUrlInput.value = APPS_SCRIPT_URL_DEFAULT;
+        }
+        showMessage('✓ URL reset to default. Click "Save URL" to confirm.', 'success');
+    };
+}
 
 scannerTrigger?.addEventListener('click', openScanner);
 attendanceForm?.addEventListener('submit', submitAttendance);
