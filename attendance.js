@@ -106,29 +106,6 @@ function formatReadableDate(dateStr) {
     }
 }
 
-function formatDisplayDate(value) {
-    if (!value) return 'N/A';
-    if (value === 'N/A') return 'N/A';
-    
-    // If it's already in MM/DD/YY format, convert to readable
-    if (/^\d{2}\/\d{2}\/\d{2}$/.test(value)) {
-        const parts = value.split('/');
-        const month = parseInt(parts[0], 10);
-        const day = parseInt(parts[1], 10);
-        let year = 2000 + parseInt(parts[2], 10);
-        const date = new Date(year, month - 1, day);
-        if (!isNaN(date.getTime())) {
-            return date.toLocaleDateString('en-US', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-            });
-        }
-    }
-    
-    return formatReadableDate(value);
-}
-
 let savedUrl = localStorage.getItem('appsScriptUrl');
 if (savedUrl && savedUrl !== APPS_SCRIPT_URL_DEFAULT) {
     localStorage.removeItem('appsScriptUrl');
@@ -344,7 +321,7 @@ async function processQR(qrData) {
         ageDisplay = calculatedAge !== 'N/A' ? `${calculatedAge} years` : 'N/A';
     }
 
-    // Display data safely
+    // Display data safely (DO NOT show DOB, only calculated age)
     const setText = (id, value) => {
         const el = document.getElementById(id);
         if (el) el.textContent = value;
@@ -353,16 +330,15 @@ async function processQR(qrData) {
     setText('displayPUSId', data.pusId || data.clientId || 'N/A');
     setText('displayPUSName', data.pusName || data.clientName || 'N/A');
     
-    // Display Gender and calculated Age
-    const displayDOB = data.dateOfBirth ? formatDisplayDate(data.dateOfBirth) : 'N/A';
-    setText('displayGenderAge', `${data.gender || 'N/A'} / Age: ${ageDisplay} (DOB: ${displayDOB})`);
+    // Display Gender and calculated Age only (no DOB shown)
+    setText('displayGenderAge', `${data.gender || 'N/A'} / Age: ${ageDisplay}`);
     
     setText('displayOffense', data.offenseCategory || 'N/A');
     setText('displayCaseNumber', data.caseNumber || 'N/A');
     setText('displayAddress', data.address || 'N/A');
     
-    const startDateFormatted = formatDisplayDate(data.startDate);
-    const endDateFormatted = formatDisplayDate(data.endDate);
+    const startDateFormatted = formatReadableDate(data.startDate);
+    const endDateFormatted = formatReadableDate(data.endDate);
     setText('displayPeriod', `${startDateFormatted} to ${endDateFormatted}`);
     
     setText('displayOfficer', data.supervisingOfficer || 'N/A');
