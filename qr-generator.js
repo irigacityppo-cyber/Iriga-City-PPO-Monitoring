@@ -127,6 +127,16 @@ function formatExcelDate(value) {
         return `${year}-${month}-${day}`;
     }
 
+    // FIXED: MM-DD-YY format (e.g. "08-15-26") - added with year threshold
+    if (/^\d{2}-\d{2}-\d{2}$/.test(strValue)) {
+        const parts = strValue.split('-');
+        const month = parts[0].padStart(2, '0');
+        const day = parts[1].padStart(2, '0');
+        let year = parseInt(parts[2], 10);
+        year = year < 30 ? 2000 + year : 1900 + year;
+        return `${year}-${month}-${day}`;
+    }
+
     // MM-DD-YYYY format
     if (/^\d{2}-\d{2}-\d{4}$/.test(strValue)) {
         const parts = strValue.split('-');
@@ -171,6 +181,10 @@ function calculateAge(dateOfBirth) {
     else if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateOfBirth)) {
         const parts = dateOfBirth.split('/');
         dob = new Date(parseInt(parts[2], 10), parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
+    }
+    // Handle MM-DD-YY format
+    else if (/^\d{2}-\d{2}-\d{2}$/.test(dateOfBirth)) {
+        dob = parseMMDDYY(dateOfBirth);
     }
     else {
         dob = new Date(dateOfBirth);
@@ -989,7 +1003,7 @@ function clearForm() {
 
 document.getElementById('templateHelpLink')?.addEventListener('click',(e)=>{ 
     e.preventDefault(); 
-    alert("📋 Required headers: PS ID, Full Name, Gender, Date of Birth, Offense Category, Criminal Case Number, Start Date, End Date, Address, Supervising Officer, Cluster\n\n📅 Date format in Excel: MM/DD/YYYY or MM/DD/YY (e.g., 05/15/1990 or 05/15/90)"); 
+    alert("📋 Required headers: PS ID, Full Name, Gender, Date of Birth, Offense Category, Criminal Case Number, Start Date, End Date, Address, Supervising Officer, Cluster\n\n📅 Date format in Excel: MM/DD/YYYY, MM/DD/YY, or MM-DD-YY (e.g., 05/15/1990, 05/15/90, or 08-15-26)"); 
 });
 
 document.getElementById('logoutBtn')?.addEventListener('click', function() {
