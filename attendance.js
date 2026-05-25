@@ -3,7 +3,7 @@
 // ============================================
 
 const GOOGLE_CLIENT_ID = '615931175551-cnd4ocg43ktu56jpmhdm9ulmbn5tedq1.apps.googleusercontent.com';
-const APPS_SCRIPT_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbzxjMAhA2qa7FeQSA08EsfI1gXpjunMOyVziynfLGWBAqIOtNumfC7yRIrqDGyDp50F/exec';
+const APPS_SCRIPT_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycby1pL6I5pA0lxnWg6674cBNmpiyW5oh1IWl2nwdAfJDKqm3wmL3BxzNX4aG1C_pKJzD/exec';
 
 const AUTHORIZED_EMAILS = [
     'iace2318i@gmail.com',
@@ -38,10 +38,8 @@ function calculateAgeFromDOB(dateOfBirth) {
         else if (dateOfBirth.includes('-')) {
             const parts = dateOfBirth.split('-');
             if (parts[0].length === 4) {
-                // YYYY-MM-DD
                 dob = new Date(dateOfBirth);
             } else {
-                // MM-DD-YYYY
                 dob = new Date(parseInt(parts[2], 10), parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
             }
         }
@@ -69,11 +67,9 @@ function formatReadableDate(dateStr) {
     try {
         let date;
         
-        // Handle YYYY-MM-DD format
         if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
             date = new Date(dateStr);
         }
-        // Handle MM/DD/YY format
         else if (dateStr.match(/^\d{2}\/\d{2}\/\d{2}$/)) {
             const parts = dateStr.split('/');
             const month = parseInt(parts[0], 10) - 1;
@@ -81,7 +77,6 @@ function formatReadableDate(dateStr) {
             let year = 2000 + parseInt(parts[2], 10);
             date = new Date(year, month, day);
         }
-        // Handle MM-DD-YYYY format
         else if (dateStr.includes('-')) {
             const parts = dateStr.split('-');
             if (parts[0].length === 4) {
@@ -302,7 +297,6 @@ function closeScanner() {
 async function processQR(qrData) {
     showMessage('Processing QR code...', 'info');
 
-    // Parse QR safely
     let data;
     try {
         data = JSON.parse(qrData);
@@ -311,17 +305,14 @@ async function processQR(qrData) {
         return;
     }
 
-    // Store data
     currentPUSData = data;
 
-    // Calculate age from date of birth (DOB not shown, only age)
     let ageDisplay = 'N/A';
     if (data.dateOfBirth) {
         const calculatedAge = calculateAgeFromDOB(data.dateOfBirth);
         ageDisplay = calculatedAge !== 'N/A' ? `${calculatedAge} years` : 'N/A';
     }
 
-    // Display data safely (DOB hidden from display)
     const setText = (id, value) => {
         const el = document.getElementById(id);
         if (el) el.textContent = value;
@@ -329,10 +320,7 @@ async function processQR(qrData) {
     
     setText('displayPUSId', data.pusId || data.clientId || 'N/A');
     setText('displayPUSName', data.pusName || data.clientName || 'N/A');
-    
-    // Display Gender and calculated Age only (DOB hidden)
     setText('displayGenderAge', `${data.gender || 'N/A'} / Age: ${ageDisplay}`);
-    
     setText('displayOffense', data.offenseCategory || 'N/A');
     setText('displayCaseNumber', data.caseNumber || 'N/A');
     setText('displayAddress', data.address || 'N/A');
@@ -344,7 +332,6 @@ async function processQR(qrData) {
     setText('displayOfficer', data.supervisingOfficer || 'N/A');
     setText('displayCluster', data.cluster || 'N/A');
 
-    // Show UI
     if (pusInfoSection) pusInfoSection.style.display = 'block';
     if (attendanceForm) attendanceForm.style.display = 'block';
 
@@ -370,20 +357,18 @@ async function submitAttendance(e) {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Submitting...';
     
-    // Calculate age from date of birth for submission (DOB not sent, only age)
     let calculatedAge = '';
     if (currentPUSData.dateOfBirth) {
         const age = calculateAgeFromDOB(currentPUSData.dateOfBirth);
         calculatedAge = age !== 'N/A' ? age.toString() : '';
     }
     
-    // Only send age, not date of birth
     const attendanceData = {
         employeeEmail: currentUser.email,
         clientName: currentPUSData.pusName || currentPUSData.clientName,
         clientId: currentPUSData.pusId || currentPUSData.clientId,
         gender: currentPUSData.gender,
-        age: calculatedAge, // Send only calculated age (DOB excluded)
+        age: calculatedAge,
         offenseCategory: currentPUSData.offenseCategory,
         caseNumber: currentPUSData.caseNumber,
         address: currentPUSData.address,
@@ -397,14 +382,12 @@ async function submitAttendance(e) {
     };
     
     try {
-        // Use no-cors mode (required for Apps Script to work from GitHub Pages)
         await fetch(APPS_SCRIPT_URL, {
             method: 'POST',
             mode: 'no-cors',
             body: JSON.stringify(attendanceData)
         });
         
-        // With no-cors, we cannot read the response, but the request still goes through
         showMessage('✓ Attendance recorded successfully!', 'success');
         
         setTimeout(() => {
