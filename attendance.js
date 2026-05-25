@@ -3,7 +3,7 @@
 // ============================================
 
 const GOOGLE_CLIENT_ID = '615931175551-cnd4ocg43ktu56jpmhdm9ulmbn5tedq1.apps.googleusercontent.com';
-const APPS_SCRIPT_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbzmAYGwIpdnUXvjh222YgV9ZyDw-5QBByLE_1BfBoUnnC2ssw7r-1s8DKasczooUqNE/exec';
+const APPS_SCRIPT_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbzxjMAhA2qa7FeQSA08EsfI1gXpjunMOyVziynfLGWBAqIOtNumfC7yRIrqDGyDp50F/exec';
 
 const AUTHORIZED_EMAILS = [
     'iace2318i@gmail.com',
@@ -314,14 +314,14 @@ async function processQR(qrData) {
     // Store data
     currentPUSData = data;
 
-    // Calculate age from date of birth
+    // Calculate age from date of birth (DOB not shown, only age)
     let ageDisplay = 'N/A';
     if (data.dateOfBirth) {
         const calculatedAge = calculateAgeFromDOB(data.dateOfBirth);
         ageDisplay = calculatedAge !== 'N/A' ? `${calculatedAge} years` : 'N/A';
     }
 
-    // Display data safely (DO NOT show DOB, only calculated age)
+    // Display data safely (DOB hidden from display)
     const setText = (id, value) => {
         const el = document.getElementById(id);
         if (el) el.textContent = value;
@@ -330,7 +330,7 @@ async function processQR(qrData) {
     setText('displayPUSId', data.pusId || data.clientId || 'N/A');
     setText('displayPUSName', data.pusName || data.clientName || 'N/A');
     
-    // Display Gender and calculated Age only (no DOB shown)
+    // Display Gender and calculated Age only (DOB hidden)
     setText('displayGenderAge', `${data.gender || 'N/A'} / Age: ${ageDisplay}`);
     
     setText('displayOffense', data.offenseCategory || 'N/A');
@@ -370,20 +370,20 @@ async function submitAttendance(e) {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Submitting...';
     
-    // Calculate age from date of birth for submission
+    // Calculate age from date of birth for submission (DOB not sent, only age)
     let calculatedAge = '';
     if (currentPUSData.dateOfBirth) {
         const age = calculateAgeFromDOB(currentPUSData.dateOfBirth);
         calculatedAge = age !== 'N/A' ? age.toString() : '';
     }
     
+    // Only send age, not date of birth
     const attendanceData = {
         employeeEmail: currentUser.email,
         clientName: currentPUSData.pusName || currentPUSData.clientName,
         clientId: currentPUSData.pusId || currentPUSData.clientId,
         gender: currentPUSData.gender,
-        dateOfBirth: currentPUSData.dateOfBirth,
-        age: calculatedAge, // Send calculated age
+        age: calculatedAge, // Send only calculated age (DOB excluded)
         offenseCategory: currentPUSData.offenseCategory,
         caseNumber: currentPUSData.caseNumber,
         address: currentPUSData.address,
