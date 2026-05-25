@@ -66,10 +66,15 @@ function formatDateToMMDDYY(date) {
 }
 
 function formatDisplayDate(value) {
-    if (!value) return 'N/A';
+    if (!value || value === 'N/A') return 'N/A';
     // If it's already in MM/DD/YY format, return as is
     if (/^\d{2}\/\d{2}\/\d{2}$/.test(value)) {
         return value;
+    }
+    // If it's YYYY-MM-DD format
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        const parts = value.split('-');
+        return `${parts[1]}/${parts[2]}/${parts[0].slice(-2)}`;
     }
     // Try to parse as date
     const date = new Date(value);
@@ -81,12 +86,16 @@ function formatDisplayDate(value) {
 
 function parseMMDDYY(dateStr) {
     if (!dateStr) return null;
-    const match = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})/);
+    // Match MM/DD/YY or MM-DD-YY or MM/DD/YYYY
+    const match = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
     if (match) {
         const month = parseInt(match[1], 10);
         const day = parseInt(match[2], 10);
         let year = parseInt(match[3], 10);
-        year = 2000 + year;
+        // Fix year threshold: 30 and above = 1900s, below = 2000s
+        if (year < 100) {
+            year = year < 30 ? 2000 + year : 1900 + year;
+        }
         const date = new Date(year, month - 1, day);
         if (!isNaN(date.getTime())) {
             return date;
@@ -101,17 +110,27 @@ function formatExcelDate(value) {
     const strValue = String(value).trim();
     if (!strValue) return '';
 
-    // Already in YYYY-MM-DD (from date input)
+    // Already in YYYY-MM-DD (from date input) - keep as is
     if (/^\d{4}-\d{2}-\d{2}$/.test(strValue)) {
         return strValue;
     }
 
-    // MM/DD/YY format from Excel template
-    if (/^\d{2}\/\d{2}\/\d{2}$/.test(strValue)) {
-        const parsed = parseMMDDYY(strValue);
-        if (parsed) {
-            return parsed.toISOString().split('T')[0];
+    // MM/DD/YY or MM/DD/YYYY format from Excel template - convert to YYYY-MM-DD
+    if (/^\d{2}\/\d{2}\/\d{2,4}$/.test(strValue)) {
+        const parts = strValue.split('/');
+        const month = parts[0].padStart(2, '0');
+        const day = parts[1].padStart(2, '0');
+        let year = parseInt(parts[2], 10);
+        if (year < 100) {
+            year = year < 30 ? 2000 + year : 1900 + year;
         }
+        return `${year}-${month}-${day}`;
+    }
+
+    // MM-DD-YYYY format
+    if (/^\d{2}-\d{2}-\d{4}$/.test(strValue)) {
+        const parts = strValue.split('-');
+        return `${parts[2]}-${parts[0]}-${parts[1]}`;
     }
 
     // Excel serial number
@@ -132,13 +151,33 @@ function formatExcelDate(value) {
 }
 
 // ============================================
-// AGE CALCULATION FUNCTION
+// AGE CALCULATION FUNCTION - FIXED
 // ============================================
 
 function calculateAge(dateOfBirth) {
-    if (!dateOfBirth) return '';
-    const dob = new Date(dateOfBirth);
-    if (isNaN(dob.getTime())) return '';
+    if (!dateOfBirth || dateOfBirth === 'N/A') return '';
+    
+    let dob = null;
+    
+    // Handle MM/DD/YY format explicitly
+    if (/^\d{2}\/\d{2}\/\d{2}$/.test(dateOfBirth)) {
+        dob = parseMMDDYY(dateOfBirth);
+    }
+    // Handle YYYY-MM-DD format
+    else if (/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) {
+        dob = new Date(dateOfBirth);
+    }
+    // Handle MM/DD/YYYY format
+    else if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateOfBirth)) {
+        const parts = dateOfBirth.split('/');
+        dob = new Date(parseInt(parts[2], 10), parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
+    }
+    else {
+        dob = new Date(dateOfBirth);
+    }
+    
+    if (!dob || isNaN(dob.getTime())) return '';
+    
     const today = new Date();
     let age = today.getFullYear() - dob.getFullYear();
     const monthDiff = today.getMonth() - dob.getMonth();
@@ -424,7 +463,7 @@ document.getElementById('qrForm')?.addEventListener('submit', async function(e) 
         const pusId = document.getElementById('pusId')?.value.trim() || '';
         const pusName = document.getElementById('pusName')?.value.trim() || '';
         const dateOfBirthElem = document.getElementById('dateOfBirth');
-        const dateOfBirth = dateOfBirthElem ? dateOfBirthElem.value : '';
+        let dateOfBirth = dateOfBirthElem ? dateOfBirthElem.value : '';
 
         if (!pusId || !pusName || !dateOfBirth) {
             alert('Please fill in PS ID, Full Name, and Date of Birth');
@@ -527,7 +566,7 @@ function printSingleCard(pusId, pusName, startDate, endDate, cluster, qrImageDat
 }
 
 // ============================================
-// BATCH IMPORT FUNCTIONS
+// BATCH IMPORT FUNCTIONS - FIXED
 // ============================================
 
 document.getElementById('downloadTemplateBtn')?.addEventListener('click', function() {
@@ -537,11 +576,11 @@ document.getElementById('downloadTemplateBtn')?.addEventListener('click', functi
             'PS-2024-001',
             'Dela Cruz, Juan A.',
             'Male',
-            '05/15/90',
+            '05/15/1990',
             'Drug Offense',
             'RTC-2024-00123',
-            '08/15/23',
-            '08/15/26',
+            '08/15/2023',
+            '08/15/2026',
             '123 Purok 1, Brgy. San Juan, Iriga City',
             'SSPO JANET B. PAVIA',
             'IRIGA'
@@ -550,11 +589,11 @@ document.getElementById('downloadTemplateBtn')?.addEventListener('click', functi
             'PS-2024-002',
             'Reyes, Maria S.',
             'Female',
-            '09/20/82',
+            '09/20/1982',
             'Non-Drug Offense',
             'RTC-2024-00456',
-            '09/01/23',
-            '09/01/26',
+            '09/01/2023',
+            '09/01/2026',
             '456 Mabini St., Iriga City',
             'SSPO JANET B. PAVIA',
             'NABUA'
@@ -592,21 +631,28 @@ async function readExcelFile(file) {
         reader.onload = function(e) {
             try { 
                 const data = new Uint8Array(e.target.result); 
-                const workbook = XLSX.read(data, { type: 'array' }); 
+                // Fix: Add cellDates:true and raw:false so dates come as strings, not serials
+                const workbook = XLSX.read(data, { type: 'array', cellDates: true, raw: false }); 
                 const firstSheet = workbook.Sheets[workbook.SheetNames[0]]; 
-                const jsonData = XLSX.utils.sheet_to_json(firstSheet); 
+                const jsonData = XLSX.utils.sheet_to_json(firstSheet, { defval: '' }); // defval fills empty cells
+                console.log('Parsed Excel data:', jsonData);
                 resolve(jsonData); 
             } catch (error) { 
+                console.error('Excel parsing error:', error);
                 reject(error); 
             }
         }; 
-        reader.onerror = reject; 
+        reader.onerror = (error) => {
+            console.error('FileReader error:', error);
+            reject(error);
+        }; 
         reader.readAsArrayBuffer(file);
     });
 }
 
 document.getElementById('importBtn')?.addEventListener('click', async function() {
-    const file = document.getElementById('excelFile')?.files[0];
+    const fileInput = document.getElementById('excelFile');
+    const file = fileInput?.files[0];
     const statusDiv = document.getElementById('importStatus'); 
     const progressBar = document.getElementById('progressBar'); 
     const progressFill = document.getElementById('progressFill');
@@ -623,11 +669,16 @@ document.getElementById('importBtn')?.addEventListener('click', async function()
     if (statusDiv) {
         statusDiv.style.display = 'block'; 
         statusDiv.className = 'status-message status-info'; 
-        statusDiv.textContent = 'Reading...';
+        statusDiv.textContent = 'Reading Excel file...';
     }
     
     try {
         const data = await readExcelFile(file);
+        
+        if (!data || data.length === 0) {
+            throw new Error('No data found in Excel file');
+        }
+        
         if (statusDiv) statusDiv.textContent = `Found ${data.length} records. Generating...`;
         if (progressBar) progressBar.style.display = 'block';
         batchQRs = [];
@@ -636,31 +687,35 @@ document.getElementById('importBtn')?.addEventListener('click', async function()
             const row = data[i];
             if (progressFill) progressFill.style.width = `${((i+1)/data.length)*100}%`;
             
-            // Try different possible column names for Date of Birth
+            // Get values from row with proper column mapping
             let dateOfBirth = row['Date of Birth'] || row['dateOfBirth'] || row['DOB'] || row['Birth Date'] || '';
-            if (dateOfBirth) {
-                dateOfBirth = formatExcelDate(dateOfBirth);
-            }
-            
             let startDate = row['Start Date'] || row['startDate'] || '';
             let endDate = row['End Date'] || row['endDate'] || '';
             
+            console.log(`Row ${i} - Raw DOB: ${dateOfBirth}, Start: ${startDate}, End: ${endDate}`);
+            
+            // Format dates
+            if (dateOfBirth) dateOfBirth = formatExcelDate(dateOfBirth);
             if (startDate) startDate = formatExcelDate(startDate);
             if (endDate) endDate = formatExcelDate(endDate);
             
+            console.log(`Row ${i} - Formatted DOB: ${dateOfBirth}, Start: ${startDate}, End: ${endDate}`);
+            
             const pusData = {
-                pusId: row['PS ID'] || row['pusId'] || `PS-${Date.now()}-${i}`,
-                pusName: row['Full Name'] || row['pusName'] || row['NAME OF CLIENT'] || 'Unknown',
-                gender: row['Gender'] || row['gender'] || 'Female',
+                pusId: String(row['PS ID'] || row['pusId'] || `PS-${Date.now()}-${i}`),
+                pusName: String(row['Full Name'] || row['pusName'] || row['NAME OF CLIENT'] || 'Unknown'),
+                gender: String(row['Gender'] || row['gender'] || 'Female'),
                 dateOfBirth: dateOfBirth,
-                offenseCategory: row['Offense Category'] || row['offenseCategory'] || 'Drug Offense',
+                offenseCategory: String(row['Offense Category'] || row['offenseCategory'] || 'Drug Offense'),
                 startDate: startDate,
                 endDate: endDate,
                 address: row['Address'] ? String(row['Address']).trim() : '',
                 caseNumber: row['Criminal Case Number'] ? String(row['Criminal Case Number']).trim() : '',
-                supervisingOfficer: row['Supervising Officer'] || row['supervisingOfficer'] || '',
-                cluster: row['Cluster'] || row['cluster'] || ''
+                supervisingOfficer: String(row['Supervising Officer'] || row['supervisingOfficer'] || ''),
+                cluster: String(row['Cluster'] || row['cluster'] || '')
             };
+            
+            console.log(`Row ${i} - Processed PUS: ${pusData.pusName}, DOB: ${pusData.dateOfBirth}`);
             
             const qrData = JSON.stringify(pusData);
             const canvas = await generateQRCode(qrData, 300);
@@ -680,11 +735,13 @@ document.getElementById('importBtn')?.addEventListener('click', async function()
             openBatchModal();
         }
     } catch (error) {
+        console.error('Import error:', error);
         if (statusDiv) {
             statusDiv.className = 'status-message status-error'; 
-            statusDiv.textContent = 'Error: '+error.message; 
+            statusDiv.textContent = 'Error: ' + error.message; 
         }
         if (progressBar) progressBar.style.display = 'none';
+        alert('Import failed: ' + error.message);
     }
 });
 
@@ -732,15 +789,34 @@ window.printSingleBatchCard = function(index) {
     if(qr) printSingleCard(qr.data.pusId, qr.data.pusName, qr.data.startDate, qr.data.endDate, qr.data.cluster, qr.imageUrl); 
 };
 
+// FIXED: Mass download with proper DOM attachment and longer revoke timeout
 document.getElementById('massDownloadQrsBtnModal')?.addEventListener('click', async function() {
-    if(batchQRs.length===0){ alert('No QR codes'); return; }
+    if(batchQRs.length === 0) { 
+        alert('No QR codes to download'); 
+        return; 
+    }
     const zip = new JSZip();
-    for(let qr of batchQRs){ const base64 = qr.imageUrl.split(',')[1]; const safeName = qr.data.pusName.replace(/[^a-z0-9]/gi, '_'); zip.file(`QR_${qr.data.pusId}_${safeName}.png`, base64, { base64: true }); }
-    const blob = await zip.generateAsync({ type: 'blob' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `All_QR_Codes_${Date.now()}.zip`; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 100);
+    for(let qr of batchQRs) { 
+        const base64Data = qr.imageUrl.split(',')[1];
+        const safeName = qr.data.pusName.replace(/[^a-z0-9]/gi, '_'); 
+        zip.file(`QR_${qr.data.pusId}_${safeName}.png`, base64Data, { base64: true }); 
+    }
+    const blob = await zip.generateAsync({ type: 'blob' }); 
+    const link = document.createElement('a'); 
+    link.href = URL.createObjectURL(blob); 
+    link.download = `All_QR_Codes_${Date.now()}.zip`;
+    document.body.appendChild(link);
+    link.click(); 
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(link.href), 5000);
 });
 
+// FIXED: Mass download cards with proper DOM attachment and longer revoke timeout
 document.getElementById('massDownloadCardsBtnModal')?.addEventListener('click', async function() {
-    if (batchQRs.length === 0) { alert('No batch QR codes'); return; }
+    if (batchQRs.length === 0) { 
+        alert('No batch QR codes'); 
+        return; 
+    }
     const massProgress = document.getElementById('massProgressModal'); 
     const massProgressFill = document.getElementById('massProgressFillModal'); 
     const massStatus = document.getElementById('massStatusModal');
@@ -753,10 +829,20 @@ document.getElementById('massDownloadCardsBtnModal')?.addEventListener('click', 
         if (massProgressFill) massProgressFill.style.width = `${((i+1)/batchQRs.length)*100}%`; 
         if (massStatus) massStatus.textContent = `Processing ${i+1}/${batchQRs.length}: ${qr.data.pusName}`;
         const canvas = await generateIDCardCanvas(qr.data.pusId, qr.data.pusName, qr.data.startDate, qr.data.endDate, qr.data.cluster, qr.imageUrl);
-        if(canvas){ const base64Data = canvas.toDataURL('image/png').split(',')[1]; zip.file(`ID_Card_${qr.data.pusId}_${qr.data.pusName.replace(/[^a-z0-9]/gi, '_')}.png`, base64Data, { base64: true }); }
+        if(canvas){ 
+            const base64Data = canvas.toDataURL('image/png').split(',')[1]; 
+            zip.file(`ID_Card_${qr.data.pusId}_${qr.data.pusName.replace(/[^a-z0-9]/gi, '_')}.png`, base64Data, { base64: true }); 
+        }
         await new Promise(r => setTimeout(r, 50));
     }
-    const blob = await zip.generateAsync({ type: 'blob' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `All_ID_Cards_${Date.now()}.zip`; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 100);
+    const blob = await zip.generateAsync({ type: 'blob' }); 
+    const link = document.createElement('a'); 
+    link.href = URL.createObjectURL(blob); 
+    link.download = `All_ID_Cards_${Date.now()}.zip`;
+    document.body.appendChild(link);
+    link.click(); 
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(link.href), 5000);
     if (massStatus) massStatus.textContent = '✅ All cards ready!'; 
     if (massProgress) setTimeout(()=>{ massProgress.style.display='none'; }, 2000);
 });
@@ -871,15 +957,19 @@ window.loadPUS = function(pusId) {
 };
 
 window.regenerateQR = function(pusId) { loadPUS(pusId); };
+
+// FIXED: Export with proper DOM attachment
 window.exportAllPUS = function() { 
     const records = JSON.parse(localStorage.getItem('iriga_ppo_pus')||'[]'); 
     if(!records.length){ alert('No records'); return; } 
     const blob = new Blob([JSON.stringify(records,null,2)], {type:'application/json'}); 
-    const a=document.createElement('a'); 
-    a.download=`iriga_ppo_pus_${new Date().toISOString().split('T')[0]}.json`; 
-    a.href=URL.createObjectURL(blob); 
-    a.click(); 
-    setTimeout(() => URL.revokeObjectURL(a.href), 100);
+    const link = document.createElement('a'); 
+    link.download = `iriga_ppo_pus_${new Date().toISOString().split('T')[0]}.json`; 
+    link.href = URL.createObjectURL(blob);
+    document.body.appendChild(link);
+    link.click(); 
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(link.href), 5000);
 };
 
 window.clearAllPUS = function() { 
@@ -899,7 +989,7 @@ function clearForm() {
 
 document.getElementById('templateHelpLink')?.addEventListener('click',(e)=>{ 
     e.preventDefault(); 
-    alert("📋 Required headers: PS ID, Full Name, Gender, Date of Birth, Offense Category, Criminal Case Number, Start Date, End Date, Address, Supervising Officer, Cluster\n\n📅 Date format in Excel: MM/DD/YY (e.g., 05/15/90 for May 15, 1990)"); 
+    alert("📋 Required headers: PS ID, Full Name, Gender, Date of Birth, Offense Category, Criminal Case Number, Start Date, End Date, Address, Supervising Officer, Cluster\n\n📅 Date format in Excel: MM/DD/YYYY or MM/DD/YY (e.g., 05/15/1990 or 05/15/90)"); 
 });
 
 document.getElementById('logoutBtn')?.addEventListener('click', function() {
