@@ -52,12 +52,164 @@ function escapeHtml(str) {
 }
 
 // ============================================
-// DATE FORMATTING FUNCTIONS
+// ENHANCED DATE NORMALIZATION FUNCTION
 // ============================================
+
+function normalizeExcelDate(value) {
+    if (!value || value === '') return '';
+
+    // Already a Date object (from Excel with cellDates: true)
+    if (value instanceof Date && !isNaN(value.getTime())) {
+        return value.toISOString().split('T')[0];
+    }
+
+    // Excel serial number (number)
+    if (typeof value === 'number' && value > 40000 && value < 60000) {
+        try {
+            if (typeof XLSX !== 'undefined' && XLSX.SSF && XLSX.SSF.parse_date_code) {
+                const d = XLSX.SSF.parse_date_code(value);
+                if (d && d.y && d.m && d.d) {
+                    return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
+                }
+            }
+            // Fallback to JavaScript date
+            const d = new Date((value - 25569) * 86400 * 1000);
+            if (!isNaN(d.getTime())) {
+                return d.toISOString().split('T')[0];
+            }
+        } catch(e) {
+            console.warn('Excel serial conversion failed:', e);
+        }
+    }
+
+    // String dates - use comprehensive parser
+    if (typeof value === 'string') {
+        return parseDateString(value);
+    }
+
+    return '';
+}
+
+function parseDateString(dateStr) {
+    if (!dateStr || dateStr === '') return '';
+    const str = String(dateStr).trim();
+    if (!str) return '';
+
+    // Already YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    
+    // ISO with time: 1990-05-15T00:00:00.000Z
+    if (/^\d{4}-\d{2}-\d{2}T/.test(str)) return str.slice(0, 10);
+
+    const MONTHS = { 
+        jan:1, feb:2, mar:3, apr:4, may:5, jun:6,
+        jul:7, aug:8, sep:9, oct:10, nov:11, dec:12
+    };
+
+    function pad(n) { return String(n).padStart(2, '0'); }
+    function fixYear(y) {
+        y = parseInt(y, 10);
+        if (y >= 1900) return y;
+        return y < 30 ? 2000 + y : 1900 + y;
+    }
+    function ymd(y, m, d) { 
+        const year = parseInt(y, 10);
+        const month = parseInt(m, 10);
+        const day = parseInt(d, 10);
+        if (year < 1900 || year > 2100) return '';
+        if (month < 1 || month > 12) return '';
+        if (day < 1 || day > 31) return '';
+        return `${year}-${pad(month)}-${pad(day)}`;
+    }
+
+    let m;
+
+    // Remove ordinal suffixes (st, nd, rd, th)
+    const cleanStr = str.replace(/(\d)(st|nd|rd|th)/gi, '$1');
+
+    // Try JavaScript Date parse for complex formats
+    const jsDate = new Date(cleanStr);
+    if (!isNaN(jsDate.getTime()) && jsDate.getFullYear() > 1900 && jsDate.getFullYear() < 2100) {
+        return ymd(jsDate.getFullYear(), jsDate.getMonth() + 1, jsDate.getDate());
+    }
+
+    // MM/DD/YYYY or M/D/YYYY
+    m = cleanStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) {
+        // If first number > 12, assume DD/MM/YYYY
+        if (parseInt(m[1]) > 12 && parseInt(m[2]) <= 12) {
+            return ymd(m[3], m[2], m[1]);
+        }
+        return ymd(m[3], m[1], m[2]);
+    }
+
+    // MM-DD-YYYY or M-D-YYYY
+    m = cleanStr.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (m) return ymd(m[3], m[1], m[2]);
+
+    // DD/MM/YYYY (explicit day-first when day > 12)
+    m = cleanStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m && parseInt(m[1]) > 12 && parseInt(m[2]) <= 12) {
+        return ymd(m[3], m[2], m[1]);
+    }
+
+    // MM.DD.YYYY or DD.MM.YYYY
+    m = cleanStr.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (m) {
+        if (parseInt(m[1]) > 12 && parseInt(m[2]) <= 12) {
+            return ymd(m[3], m[2], m[1]); // DD.MM.YYYY
+        }
+        return ymd(m[3], m[1], m[2]); // MM.DD.YYYY
+    }
+
+    // YYYY/MM/DD or YYYY.MM.DD
+    m = cleanStr.match(/^(\d{4})[\/\.](\d{1,2})[\/\.](\d{1,2})$/);
+    if (m) return ymd(m[1], m[2], m[3]);
+
+    // Short year: MM/DD/YY
+    m = cleanStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+    if (m && parseInt(m[1]) <= 12 && parseInt(m[2]) <= 31) {
+        return ymd(fixYear(m[3]), m[1], m[2]);
+    }
+
+    // Short year: MM-DD-YY
+    m = cleanStr.match(/^(\d{1,2})-(\d{1,2})-(\d{2})$/);
+    if (m && parseInt(m[1]) <= 12 && parseInt(m[2]) <= 31) {
+        return ymd(fixYear(m[3]), m[1], m[2]);
+    }
+
+    // DD-MMM-YY or DD-MMM-YYYY format (e.g., "15-Aug-2024")
+    m = cleanStr.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$/);
+    if (m) {
+        const mo = MONTHS[m[2].toLowerCase()];
+        if (mo) return ymd(fixYear(m[3]), mo, m[1]);
+    }
+
+    // Named month formats
+    m = cleanStr.match(/([A-Za-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})/i);
+    if (m) {
+        const mo = MONTHS[m[1].toLowerCase().slice(0, 3)];
+        if (mo) return ymd(m[3], mo, m[2]);
+    }
+
+    m = cleanStr.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,9}),?\s+(\d{4})$/i);
+    if (m) {
+        const mo = MONTHS[m[2].toLowerCase().slice(0, 3)];
+        if (mo) return ymd(m[3], mo, m[1]);
+    }
+
+    return '';
+}
+
+function formatExcelDate(value) {
+    return normalizeExcelDate(value);
+}
 
 function formatDateToMMDDYY(date) {
     if (!date) return '';
-    const d = new Date(date);
+    const isoDate = normalizeExcelDate(date);
+    if (!isoDate) return '';
+    const d = new Date(isoDate);
     if (isNaN(d.getTime())) return '';
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
@@ -67,137 +219,23 @@ function formatDateToMMDDYY(date) {
 
 function formatDisplayDate(value) {
     if (!value || value === 'N/A') return 'N/A';
-    // If it's already in MM/DD/YY format, return as is
-    if (/^\d{2}\/\d{2}\/\d{2}$/.test(value)) {
-        return value;
-    }
-    // If it's YYYY-MM-DD format
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        const parts = value.split('-');
-        return `${parts[1]}/${parts[2]}/${parts[0].slice(-2)}`;
-    }
-    // Try to parse as date
-    const date = new Date(value);
-    if (!isNaN(date.getTime())) {
-        return formatDateToMMDDYY(date);
-    }
-    return value;
+    const isoDate = normalizeExcelDate(value);
+    if (!isoDate) return value;
+    const d = new Date(isoDate);
+    if (isNaN(d.getTime())) return value;
+    return formatDateToMMDDYY(isoDate);
 }
-
-function parseMMDDYY(dateStr) {
-    if (!dateStr) return null;
-    // Match MM/DD/YY or MM-DD-YY or MM/DD/YYYY
-    const match = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
-    if (match) {
-        const month = parseInt(match[1], 10);
-        const day = parseInt(match[2], 10);
-        let year = parseInt(match[3], 10);
-        // Fix year threshold: 30 and above = 1900s, below = 2000s
-        if (year < 100) {
-            year = year < 30 ? 2000 + year : 1900 + year;
-        }
-        const date = new Date(year, month - 1, day);
-        if (!isNaN(date.getTime())) {
-            return date;
-        }
-    }
-    return null;
-}
-
-function formatExcelDate(value) {
-    if (!value) return '';
-    
-    const strValue = String(value).trim();
-    if (!strValue) return '';
-
-    // Already in YYYY-MM-DD (from date input) - keep as is
-    if (/^\d{4}-\d{2}-\d{2}$/.test(strValue)) {
-        return strValue;
-    }
-
-    // MM/DD/YY or MM/DD/YYYY format from Excel template - convert to YYYY-MM-DD
-    if (/^\d{2}\/\d{2}\/\d{2,4}$/.test(strValue)) {
-        const parts = strValue.split('/');
-        const month = parts[0].padStart(2, '0');
-        const day = parts[1].padStart(2, '0');
-        let year = parseInt(parts[2], 10);
-        if (year < 100) {
-            year = year < 30 ? 2000 + year : 1900 + year;
-        }
-        return `${year}-${month}-${day}`;
-    }
-
-    // FIXED: MM-DD-YY format (e.g. "08-15-26") - added with year threshold
-    if (/^\d{2}-\d{2}-\d{2}$/.test(strValue)) {
-        const parts = strValue.split('-');
-        const month = parts[0].padStart(2, '0');
-        const day = parts[1].padStart(2, '0');
-        let year = parseInt(parts[2], 10);
-        year = year < 30 ? 2000 + year : 1900 + year;
-        return `${year}-${month}-${day}`;
-    }
-
-    // MM-DD-YYYY format
-    if (/^\d{2}-\d{2}-\d{4}$/.test(strValue)) {
-        const parts = strValue.split('-');
-        return `${parts[2]}-${parts[0]}-${parts[1]}`;
-    }
-
-    // Excel serial number
-    if (typeof value === 'number') {
-        const date = new Date((value - 25569) * 86400 * 1000);
-        if (!isNaN(date.getTime())) {
-            return date.toISOString().split('T')[0];
-        }
-    }
-
-    // other string formats
-    const date = new Date(strValue);
-    if (!isNaN(date.getTime())) {
-        return date.toISOString().split('T')[0];
-    }
-
-    return '';
-}
-
-// ============================================
-// AGE CALCULATION FUNCTION - FIXED
-// ============================================
 
 function calculateAge(dateOfBirth) {
     if (!dateOfBirth || dateOfBirth === 'N/A') return '';
-    
-    let dob = null;
-    
-    // Handle MM/DD/YY format explicitly
-    if (/^\d{2}\/\d{2}\/\d{2}$/.test(dateOfBirth)) {
-        dob = parseMMDDYY(dateOfBirth);
-    }
-    // Handle YYYY-MM-DD format
-    else if (/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) {
-        dob = new Date(dateOfBirth);
-    }
-    // Handle MM/DD/YYYY format
-    else if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateOfBirth)) {
-        const parts = dateOfBirth.split('/');
-        dob = new Date(parseInt(parts[2], 10), parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
-    }
-    // Handle MM-DD-YY format
-    else if (/^\d{2}-\d{2}-\d{2}$/.test(dateOfBirth)) {
-        dob = parseMMDDYY(dateOfBirth);
-    }
-    else {
-        dob = new Date(dateOfBirth);
-    }
-    
-    if (!dob || isNaN(dob.getTime())) return '';
-    
+    const iso = normalizeExcelDate(dateOfBirth);
+    if (!iso) return '';
+    const dob = new Date(iso);
+    if (isNaN(dob.getTime())) return '';
     const today = new Date();
     let age = today.getFullYear() - dob.getFullYear();
-    const monthDiff = today.getMonth() - dob.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
-        age--;
-    }
+    const m = today.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
     return age;
 }
 
@@ -250,43 +288,49 @@ window.clearDates = function() {
 };
 
 // ============================================
-// SESSION CHECK
+// SESSION CHECK - FIXED WITH TRY/CATCH
 // ============================================
 
 function checkSession() {
-    const saved = localStorage.getItem('loggedInUser');
-
-    if (saved) {
-        try {
-            const user = JSON.parse(saved);
-            if (!user || !user.email || !AUTHORIZED_EMAILS.includes(user.email)) {
-                throw new Error("Invalid session");
-            }
-            currentUser = user;
+    try {
+        const saved = localStorage.getItem('loggedInUser');
+        if (!saved) {
             const sessionExpired = document.getElementById('sessionExpired');
             const mainContent = document.getElementById('mainContent');
-            const userNameDisplay = document.getElementById('userNameDisplay');
-            const userEmailDisplay = document.getElementById('userEmailDisplay');
-            const userAvatar = document.getElementById('userAvatar');
-            
-            if (sessionExpired) sessionExpired.style.display = 'none';
-            if (mainContent) mainContent.style.display = 'block';
-            if (userNameDisplay) userNameDisplay.textContent = user.name || user.email;
-            if (userEmailDisplay) userEmailDisplay.textContent = user.email;
-            if (userAvatar && user.picture) userAvatar.src = user.picture;
-            
-            return true;
-        } catch (e) {
-            console.warn("Session corrupted:", e);
-            localStorage.removeItem('loggedInUser');
+            if (sessionExpired) sessionExpired.style.display = 'block';
+            if (mainContent) mainContent.style.display = 'none';
+            return false;
         }
+        
+        const user = JSON.parse(saved);
+        if (!user || !user.email || !AUTHORIZED_EMAILS.includes(user.email)) {
+            throw new Error("Invalid session");
+        }
+        
+        currentUser = user;
+        const sessionExpired = document.getElementById('sessionExpired');
+        const mainContent = document.getElementById('mainContent');
+        const userNameDisplay = document.getElementById('userNameDisplay');
+        const userEmailDisplay = document.getElementById('userEmailDisplay');
+        const userAvatar = document.getElementById('userAvatar');
+        
+        if (sessionExpired) sessionExpired.style.display = 'none';
+        if (mainContent) mainContent.style.display = 'block';
+        if (userNameDisplay) userNameDisplay.textContent = user.name || user.email;
+        if (userEmailDisplay) userEmailDisplay.textContent = user.email;
+        if (userAvatar && user.picture) userAvatar.src = user.picture;
+        
+        return true;
+    } catch (e) {
+        console.warn("Session corrupted:", e);
+        localStorage.removeItem('loggedInUser');
+        
+        const sessionExpired = document.getElementById('sessionExpired');
+        const mainContent = document.getElementById('mainContent');
+        if (sessionExpired) sessionExpired.style.display = 'block';
+        if (mainContent) mainContent.style.display = 'none';
+        return false;
     }
-    
-    const sessionExpired = document.getElementById('sessionExpired');
-    const mainContent = document.getElementById('mainContent');
-    if (sessionExpired) sessionExpired.style.display = 'block';
-    if (mainContent) mainContent.style.display = 'none';
-    return false;
 }
 
 function logout() {
@@ -409,7 +453,6 @@ function showQRModal(qrCanvas, clientData) {
     ctx.drawImage(qrCanvas, 0, 0, 180, 180);
     if (modalQrcode) modalQrcode.appendChild(canvas);
     
-    // Calculate age from date of birth for display
     const ageValue = clientData.dateOfBirth ? calculateAge(clientData.dateOfBirth) : '';
     const ageDisplay = ageValue ? `${ageValue} years` : 'N/A';
     const displayDOB = formatDisplayDate(clientData.dateOfBirth);
@@ -476,8 +519,7 @@ document.getElementById('qrForm')?.addEventListener('submit', async function(e) 
     try {
         const pusId = document.getElementById('pusId')?.value.trim() || '';
         const pusName = document.getElementById('pusName')?.value.trim() || '';
-        const dateOfBirthElem = document.getElementById('dateOfBirth');
-        let dateOfBirth = dateOfBirthElem ? dateOfBirthElem.value : '';
+        let dateOfBirth = document.getElementById('dateOfBirth')?.value || '';
 
         if (!pusId || !pusName || !dateOfBirth) {
             alert('Please fill in PS ID, Full Name, and Date of Birth');
@@ -487,11 +529,13 @@ document.getElementById('qrForm')?.addEventListener('submit', async function(e) 
         const startDateElem = document.getElementById('startDate');
         const endDateElem = document.getElementById('endDate');
         
+        const formattedDOB = normalizeExcelDate(dateOfBirth);
+        
         const pusData = { 
             pusId, 
             pusName, 
             gender: document.getElementById('gender')?.value || 'Female', 
-            dateOfBirth: dateOfBirth,
+            dateOfBirth: formattedDOB || dateOfBirth,
             offenseCategory: document.getElementById('offenseCategory')?.value || 'Drug Offense',
             caseNumber: document.getElementById('caseNumber')?.value || '',
             startDate: startDateElem ? startDateElem.value : '', 
@@ -580,21 +624,22 @@ function printSingleCard(pusId, pusName, startDate, endDate, cluster, qrImageDat
 }
 
 // ============================================
-// BATCH IMPORT FUNCTIONS - FIXED
+// BATCH IMPORT FUNCTIONS
 // ============================================
 
 document.getElementById('downloadTemplateBtn')?.addEventListener('click', function() {
+    // Create template with actual Date objects for better Excel compatibility
     const templateData = [
         TEMPLATE_HEADERS,
         [
             'PS-2024-001',
             'Dela Cruz, Juan A.',
             'Male',
-            '05/15/1990',
+            new Date(1990, 4, 15),  // May 15, 1990 (month is 0-indexed in JS)
             'Drug Offense',
             'RTC-2024-00123',
-            '08/15/2023',
-            '08/15/2026',
+            new Date(2023, 7, 15),  // Aug 15, 2023
+            new Date(2026, 7, 15),  // Aug 15, 2026
             '123 Purok 1, Brgy. San Juan, Iriga City',
             'SSPO JANET B. PAVIA',
             'IRIGA'
@@ -603,11 +648,11 @@ document.getElementById('downloadTemplateBtn')?.addEventListener('click', functi
             'PS-2024-002',
             'Reyes, Maria S.',
             'Female',
-            '09/20/1982',
+            new Date(1982, 8, 20),  // Sep 20, 1982
             'Non-Drug Offense',
             'RTC-2024-00456',
-            '09/01/2023',
-            '09/01/2026',
+            new Date(2023, 8, 1),   // Sep 1, 2023
+            new Date(2026, 8, 1),   // Sep 1, 2026
             '456 Mabini St., Iriga City',
             'SSPO JANET B. PAVIA',
             'NABUA'
@@ -617,7 +662,11 @@ document.getElementById('downloadTemplateBtn')?.addEventListener('click', functi
     const ws = XLSX.utils.aoa_to_sheet(templateData);
     const colWidths = templateData[0].map((_, colIndex) => {
         const maxLength = Math.max(
-            ...templateData.map(row => (row[colIndex] ? row[colIndex].toString().length : 10))
+            ...templateData.map(row => {
+                const val = row[colIndex];
+                if (val instanceof Date) return 10;
+                return val ? val.toString().length : 10;
+            })
         );
         return { wch: Math.min(maxLength + 2, 30) };
     });
@@ -645,10 +694,13 @@ async function readExcelFile(file) {
         reader.onload = function(e) {
             try { 
                 const data = new Uint8Array(e.target.result); 
-                // Fix: Add cellDates:true and raw:false so dates come as strings, not serials
-                const workbook = XLSX.read(data, { type: 'array', cellDates: true, raw: false }); 
+                const workbook = XLSX.read(data, { 
+                    type: 'array', 
+                    cellDates: true,
+                    raw: true
+                }); 
                 const firstSheet = workbook.Sheets[workbook.SheetNames[0]]; 
-                const jsonData = XLSX.utils.sheet_to_json(firstSheet, { defval: '' }); // defval fills empty cells
+                const jsonData = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
                 console.log('Parsed Excel data:', jsonData);
                 resolve(jsonData); 
             } catch (error) { 
@@ -701,19 +753,22 @@ document.getElementById('importBtn')?.addEventListener('click', async function()
             const row = data[i];
             if (progressFill) progressFill.style.width = `${((i+1)/data.length)*100}%`;
             
-            // Get values from row with proper column mapping
             let dateOfBirth = row['Date of Birth'] || row['dateOfBirth'] || row['DOB'] || row['Birth Date'] || '';
             let startDate = row['Start Date'] || row['startDate'] || '';
             let endDate = row['End Date'] || row['endDate'] || '';
             
-            console.log(`Row ${i} - Raw DOB: ${dateOfBirth}, Start: ${startDate}, End: ${endDate}`);
+            console.log(`Row ${i} - Raw DOB:`, dateOfBirth);
             
-            // Format dates
-            if (dateOfBirth) dateOfBirth = formatExcelDate(dateOfBirth);
-            if (startDate) startDate = formatExcelDate(startDate);
-            if (endDate) endDate = formatExcelDate(endDate);
+            dateOfBirth = normalizeExcelDate(dateOfBirth);
+            startDate = normalizeExcelDate(startDate);
+            endDate = normalizeExcelDate(endDate);
             
-            console.log(`Row ${i} - Formatted DOB: ${dateOfBirth}, Start: ${startDate}, End: ${endDate}`);
+            console.log(`Row ${i} - Normalized DOB: ${dateOfBirth}, Start: ${startDate}, End: ${endDate}`);
+            
+            if (dateOfBirth && !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) {
+                console.warn(`Row ${i} - Invalid DOB format: ${dateOfBirth}`);
+                dateOfBirth = '';
+            }
             
             const pusData = {
                 pusId: String(row['PS ID'] || row['pusId'] || `PS-${Date.now()}-${i}`),
@@ -803,7 +858,6 @@ window.printSingleBatchCard = function(index) {
     if(qr) printSingleCard(qr.data.pusId, qr.data.pusName, qr.data.startDate, qr.data.endDate, qr.data.cluster, qr.imageUrl); 
 };
 
-// FIXED: Mass download with proper DOM attachment and longer revoke timeout
 document.getElementById('massDownloadQrsBtnModal')?.addEventListener('click', async function() {
     if(batchQRs.length === 0) { 
         alert('No QR codes to download'); 
@@ -825,7 +879,6 @@ document.getElementById('massDownloadQrsBtnModal')?.addEventListener('click', as
     setTimeout(() => URL.revokeObjectURL(link.href), 5000);
 });
 
-// FIXED: Mass download cards with proper DOM attachment and longer revoke timeout
 document.getElementById('massDownloadCardsBtnModal')?.addEventListener('click', async function() {
     if (batchQRs.length === 0) { 
         alert('No batch QR codes'); 
@@ -914,11 +967,16 @@ document.getElementById('clearBatchBtnModal')?.addEventListener('click', functio
 // ============================================
 
 function saveToLocalStorage(pusData) {
-    let records = JSON.parse(localStorage.getItem('iriga_ppo_pus') || '[]');
-    const idx = records.findIndex(r => r.pusId === pusData.pusId);
-    if(idx>=0) records[idx] = pusData; else records.push(pusData);
-    localStorage.setItem('iriga_ppo_pus', JSON.stringify(records));
-    displayPUSList(records);
+    try {
+        let records = JSON.parse(localStorage.getItem('iriga_ppo_pus') || '[]');
+        const idx = records.findIndex(r => r.pusId === pusData.pusId);
+        if (idx >= 0) records[idx] = pusData; else records.push(pusData);
+        localStorage.setItem('iriga_ppo_pus', JSON.stringify(records));
+        displayPUSList(records);
+    } catch (e) {
+        console.warn('Storage error, resetting:', e);
+        localStorage.setItem('iriga_ppo_pus', JSON.stringify([pusData]));
+    }
 }
 
 function displayPUSList(records) {
@@ -956,7 +1014,7 @@ window.loadPUS = function(pusId) {
         if (pusIdElem) pusIdElem.value = record.pusId; 
         if (pusNameElem) pusNameElem.value = record.pusName; 
         if (genderElem) genderElem.value = record.gender; 
-        if (dateOfBirthElem) dateOfBirthElem.value = record.dateOfBirth || ''; 
+        if (dateOfBirthElem) dateOfBirthElem.value = record.dateOfBirth || '';
         if (offenseElem) offenseElem.value = record.offenseCategory; 
         if (caseNumElem) caseNumElem.value = record.caseNumber || '';
         if (startDateElem) startDateElem.value = record.startDate || ''; 
@@ -972,7 +1030,6 @@ window.loadPUS = function(pusId) {
 
 window.regenerateQR = function(pusId) { loadPUS(pusId); };
 
-// FIXED: Export with proper DOM attachment
 window.exportAllPUS = function() { 
     const records = JSON.parse(localStorage.getItem('iriga_ppo_pus')||'[]'); 
     if(!records.length){ alert('No records'); return; } 
@@ -1003,7 +1060,7 @@ function clearForm() {
 
 document.getElementById('templateHelpLink')?.addEventListener('click',(e)=>{ 
     e.preventDefault(); 
-    alert("📋 Required headers: PS ID, Full Name, Gender, Date of Birth, Offense Category, Criminal Case Number, Start Date, End Date, Address, Supervising Officer, Cluster\n\n📅 Date format in Excel: MM/DD/YYYY, MM/DD/YY, or MM-DD-YY (e.g., 05/15/1990, 05/15/90, or 08-15-26)"); 
+    alert("📋 Required headers: PS ID, Full Name, Gender, Date of Birth, Offense Category, Criminal Case Number, Start Date, End Date, Address, Supervising Officer, Cluster\n\n📅 The Excel template uses actual date fields. You can enter dates in any format (MM/DD/YYYY, DD/MM/YYYY, Month DD, YYYY, etc.) and they will be automatically converted!"); 
 });
 
 document.getElementById('logoutBtn')?.addEventListener('click', function() {
