@@ -2,7 +2,6 @@
 // IRIGA PPO - QR CODE & ID CARD GENERATOR
 // SHARES LOGIN SESSION WITH INDEX.HTML
 // ============================================
-// 🔧 FIXED: Batch Import Print Layout Now Uses Full Paper Space
 
 let currentQRData = null;
 let currentQRCanvas = null;
@@ -916,13 +915,16 @@ document.getElementById('massDownloadCardsBtnModal')?.addEventListener('click', 
 });
 
 // ============================================
-// 🔧 FIXED BATCH PRINT CARDS - FULL PAPER SPACE
+// MASS PRINT CARDS - UPDATED FOR 8 CARDS PER PAGE
 // ============================================
+
 document.getElementById('massPrintCardsBtnModal')?.addEventListener('click', function() {
     if (batchQRs.length === 0) { alert('No batch QR codes to print'); return; }
     
-    const cardsPerPage = 6;
+    // Set to 8 cards per page (2 columns × 4 rows)
+    const cardsPerPage = 8;
     let pagesHtml = '';
+    
     for (let i = 0; i < batchQRs.length; i += cardsPerPage) {
         const pageCards = batchQRs.slice(i, i + cardsPerPage);
         let gridItems = '';
@@ -937,66 +939,57 @@ document.getElementById('massPrintCardsBtnModal')?.addEventListener('click', fun
     if (printWindow) {
         printWindow.document.write(`<!DOCTYPE html><html><head><title>Iriga PPO ID Cards</title><style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            html { height: 100%; }
-            body { 
-                background: white; 
-                margin: 0; 
-                font-family: 'Segoe UI', Arial, sans-serif; 
-                padding: 0.25in; 
-            }
+            body { background: white; padding: 0.1in; margin: 0; font-family: 'Segoe UI', Arial, sans-serif; }
             .print-id-grid { 
                 display: grid; 
-                grid-template-columns: repeat(2, 1fr); 
-                gap: 12px 16px; 
-                width: 100%;
+                grid-template-columns: repeat(2, 1fr);
+                grid-template-rows: repeat(4, auto);
+                gap: 8px 16px;
+                justify-content: center;
+                max-width: 100%;
+                margin: 0 auto;
+                width: fit-content;
             }
             .print-card-item { 
-                width: 100%; 
+                width: 337px; 
+                height: 212px; 
                 page-break-inside: avoid; 
                 break-inside: avoid;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .official-id-card { 
-                width: 100% !important;
-                max-width: 337px;
-                height: auto;
-                aspect-ratio: 337 / 212;
+                margin: 0 auto;
             }
             .print-page { 
                 page-break-after: always; 
                 break-after: page; 
-                margin-bottom: 0; 
-                padding: 0;
-                min-height: 11in;
+                margin-bottom: 0;
                 display: flex;
-                flex-direction: column;
+                justify-content: center;
             }
             .print-page:last-child { 
                 page-break-after: auto; 
                 break-after: auto; 
             }
             @media print { 
-                html { 
-                    margin: 0; 
-                    padding: 0; 
+                body { padding: 0.08in; } 
+                .print-page { page-break-after: always; } 
+                .print-page:last-child { page-break-after: auto; } 
+                .print-id-grid { gap: 6px 14px; }
+                .print-card-item { 
+                    transform: scale(0.98);
+                    transform-origin: center;
                 }
-                body { 
-                    padding: 0.2in; 
-                    margin: 0; 
+            }
+            @page { 
+                size: letter portrait; 
+                margin: 0.1in;
+            }
+            @media screen and (max-width: 800px) {
+                .print-id-grid {
+                    grid-template-columns: 1fr;
+                    grid-template-rows: auto;
                 }
-                .print-page { 
-                    min-height: 11in;
-                    margin: 0; 
-                    padding: 0; 
-                }
-                .print-id-grid { 
-                    gap: 10px 14px;
-                }
-                @page { 
-                    size: portrait; 
-                    margin: 0.4in; 
+                .print-card-item {
+                    transform: scale(0.8);
+                    transform-origin: center;
                 }
             }
         </style></head><body>${pagesHtml}</body></html>`);
