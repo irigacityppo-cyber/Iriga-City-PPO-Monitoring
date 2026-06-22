@@ -928,7 +928,7 @@ document.getElementById('massPrintCardsBtnModal')?.addEventListener('click', fun
         let gridItems = '';
         for (let j = 0; j < pageCards.length; j++) {
             const qr = pageCards[j];
-            gridItems += `<div class="print-card-item"><div>${createSingleIDCardHTML(qr.data.pusId, qr.data.pusName, qr.data.startDate, qr.data.endDate, qr.data.cluster, qr.imageUrl)}</div></div>`;
+            gridItems += `<div class="print-card-item">${createSingleIDCardHTML(qr.data.pusId, qr.data.pusName, qr.data.startDate, qr.data.endDate, qr.data.cluster, qr.imageUrl)}</div>`;
         }
         pagesHtml += `<div class="print-page"><div class="print-id-grid">${gridItems}</div></div>`;
     }
@@ -948,20 +948,21 @@ document.getElementById('massPrintCardsBtnModal')?.addEventListener('click', fun
                 display: grid; 
                 grid-template-columns: repeat(2, 1fr); 
                 gap: 12px 16px; 
-                width: 100%; 
-                height: 100%;
+                width: 100%;
             }
             .print-card-item { 
                 width: 100%; 
-                height: auto; 
                 page-break-inside: avoid; 
                 break-inside: avoid;
                 display: flex;
                 align-items: center;
                 justify-content: center;
             }
-            .print-card-item > div {
-                width: 100%;
+            .official-id-card { 
+                width: 100% !important;
+                max-width: 337px;
+                height: auto;
+                aspect-ratio: 337 / 212;
             }
             .print-page { 
                 page-break-after: always; 
