@@ -2,6 +2,7 @@
 // IRIGA PPO - QR CODE & ID CARD GENERATOR
 // SHARES LOGIN SESSION WITH INDEX.HTML
 // ============================================
+// 🔧 FIXED: Batch Import Print Layout Now Uses Full Paper Space
 
 let currentQRData = null;
 let currentQRCanvas = null;
@@ -914,6 +915,9 @@ document.getElementById('massDownloadCardsBtnModal')?.addEventListener('click', 
     if (massProgress) setTimeout(()=>{ massProgress.style.display='none'; }, 2000);
 });
 
+// ============================================
+// 🔧 FIXED BATCH PRINT CARDS - FULL PAPER SPACE
+// ============================================
 document.getElementById('massPrintCardsBtnModal')?.addEventListener('click', function() {
     if (batchQRs.length === 0) { alert('No batch QR codes to print'); return; }
     
@@ -924,7 +928,7 @@ document.getElementById('massPrintCardsBtnModal')?.addEventListener('click', fun
         let gridItems = '';
         for (let j = 0; j < pageCards.length; j++) {
             const qr = pageCards[j];
-            gridItems += `<div class="print-card-item">${createSingleIDCardHTML(qr.data.pusId, qr.data.pusName, qr.data.startDate, qr.data.endDate, qr.data.cluster, qr.imageUrl)}</div>`;
+            gridItems += `<div class="print-card-item"><div>${createSingleIDCardHTML(qr.data.pusId, qr.data.pusName, qr.data.startDate, qr.data.endDate, qr.data.cluster, qr.imageUrl)}</div></div>`;
         }
         pagesHtml += `<div class="print-page"><div class="print-id-grid">${gridItems}</div></div>`;
     }
@@ -933,18 +937,67 @@ document.getElementById('massPrintCardsBtnModal')?.addEventListener('click', fun
     if (printWindow) {
         printWindow.document.write(`<!DOCTYPE html><html><head><title>Iriga PPO ID Cards</title><style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { background: white; padding: 0.4in; margin: 0; font-family: 'Segoe UI', Arial, sans-serif; }
-            .print-id-grid { display: grid; grid-template-columns: repeat(2, 337px); justify-content: center; gap: 20px 36px; margin: 0 auto; width: fit-content; }
-            .print-card-item { width: 337px; height: 212px; page-break-inside: avoid; break-inside: avoid; }
-            .print-page { page-break-after: always; break-after: page; margin-bottom: 0; }
-            .print-page:last-child { page-break-after: auto; break-after: auto; }
-            @media print { 
-                body { padding: 0.3in; } 
-                .print-page { page-break-after: always; } 
-                .print-page:last-child { page-break-after: auto; } 
-                .print-id-grid { gap: 18px 32px; }
+            html { height: 100%; }
+            body { 
+                background: white; 
+                margin: 0; 
+                font-family: 'Segoe UI', Arial, sans-serif; 
+                padding: 0.25in; 
             }
-            @page { size: portrait; margin: 0.4in; }
+            .print-id-grid { 
+                display: grid; 
+                grid-template-columns: repeat(2, 1fr); 
+                gap: 12px 16px; 
+                width: 100%; 
+                height: 100%;
+            }
+            .print-card-item { 
+                width: 100%; 
+                height: auto; 
+                page-break-inside: avoid; 
+                break-inside: avoid;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .print-card-item > div {
+                width: 100%;
+            }
+            .print-page { 
+                page-break-after: always; 
+                break-after: page; 
+                margin-bottom: 0; 
+                padding: 0;
+                min-height: 11in;
+                display: flex;
+                flex-direction: column;
+            }
+            .print-page:last-child { 
+                page-break-after: auto; 
+                break-after: auto; 
+            }
+            @media print { 
+                html { 
+                    margin: 0; 
+                    padding: 0; 
+                }
+                body { 
+                    padding: 0.2in; 
+                    margin: 0; 
+                }
+                .print-page { 
+                    min-height: 11in;
+                    margin: 0; 
+                    padding: 0; 
+                }
+                .print-id-grid { 
+                    gap: 10px 14px;
+                }
+                @page { 
+                    size: portrait; 
+                    margin: 0.4in; 
+                }
+            }
         </style></head><body>${pagesHtml}</body></html>`);
         printWindow.document.close();
         setTimeout(() => { printWindow.print(); }, 300);
