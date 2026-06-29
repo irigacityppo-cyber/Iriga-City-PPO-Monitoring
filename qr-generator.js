@@ -51,197 +51,12 @@ function escapeHtml(str) {
     }); 
 }
 
-// ============================================
-// ENHANCED DATE NORMALIZATION FUNCTION
-// ============================================
 
-function normalizeExcelDate(value) {
-    if (!value || value === '') return '';
 
-    // Already a Date object (from Excel with cellDates: true)
-    if (value instanceof Date && !isNaN(value.getTime())) {
-        return value.toISOString().split('T')[0];
-    }
 
-    // Excel serial number (number)
-    if (typeof value === 'number' && value > 40000 && value < 60000) {
-        try {
-            if (typeof XLSX !== 'undefined' && XLSX.SSF && XLSX.SSF.parse_date_code) {
-                const d = XLSX.SSF.parse_date_code(value);
-                if (d && d.y && d.m && d.d) {
-                    return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
-                }
-            }
-            // Fallback to JavaScript date
-            const d = new Date((value - 25569) * 86400 * 1000);
-            if (!isNaN(d.getTime())) {
-                return d.toISOString().split('T')[0];
-            }
-        } catch(e) {
-            console.warn('Excel serial conversion failed:', e);
-        }
-    }
 
-    // String dates - use comprehensive parser
-    if (typeof value === 'string') {
-        return parseDateString(value);
-    }
 
-    return '';
-}
 
-function parseDateString(dateStr) {
-    if (!dateStr || dateStr === '') return '';
-    const str = String(dateStr).trim();
-    if (!str) return '';
-
-    // Already YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-    
-    // ISO with time: 1990-05-15T00:00:00.000Z
-    if (/^\d{4}-\d{2}-\d{2}T/.test(str)) return str.slice(0, 10);
-
-    const MONTHS = { 
-        jan:1, feb:2, mar:3, apr:4, may:5, jun:6,
-        jul:7, aug:8, sep:9, oct:10, nov:11, dec:12
-    };
-
-    function pad(n) { return String(n).padStart(2, '0'); }
-    function fixYear(y) {
-        y = parseInt(y, 10);
-        if (y >= 1900) return y;
-        return y < 30 ? 2000 + y : 1900 + y;
-    }
-    function ymd(y, m, d) { 
-        const year = parseInt(y, 10);
-        const month = parseInt(m, 10);
-        const day = parseInt(d, 10);
-        if (year < 1900 || year > 2100) return '';
-        if (month < 1 || month > 12) return '';
-        if (day < 1 || day > 31) return '';
-        return `${year}-${pad(month)}-${pad(day)}`;
-    }
-
-    let m;
-
-    // Remove ordinal suffixes (st, nd, rd, th)
-    const cleanStr = str.replace(/(\d)(st|nd|rd|th)/gi, '$1');
-
-    // Try JavaScript Date parse for complex formats
-    const jsDate = new Date(cleanStr);
-    if (!isNaN(jsDate.getTime()) && jsDate.getFullYear() > 1900 && jsDate.getFullYear() < 2100) {
-        return ymd(jsDate.getFullYear(), jsDate.getMonth() + 1, jsDate.getDate());
-    }
-
-    // MM/DD/YYYY or M/D/YYYY
-    m = cleanStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (m) {
-        // If first number > 12, assume DD/MM/YYYY
-        if (parseInt(m[1]) > 12 && parseInt(m[2]) <= 12) {
-            return ymd(m[3], m[2], m[1]);
-        }
-        return ymd(m[3], m[1], m[2]);
-    }
-
-    // MM-DD-YYYY or M-D-YYYY
-    m = cleanStr.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-    if (m) return ymd(m[3], m[1], m[2]);
-
-    // DD/MM/YYYY (explicit day-first when day > 12)
-    m = cleanStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (m && parseInt(m[1]) > 12 && parseInt(m[2]) <= 12) {
-        return ymd(m[3], m[2], m[1]);
-    }
-
-    // MM.DD.YYYY or DD.MM.YYYY
-    m = cleanStr.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-    if (m) {
-        if (parseInt(m[1]) > 12 && parseInt(m[2]) <= 12) {
-            return ymd(m[3], m[2], m[1]); // DD.MM.YYYY
-        }
-        return ymd(m[3], m[1], m[2]); // MM.DD.YYYY
-    }
-
-    // YYYY/MM/DD or YYYY.MM.DD
-    m = cleanStr.match(/^(\d{4})[\/\.](\d{1,2})[\/\.](\d{1,2})$/);
-    if (m) return ymd(m[1], m[2], m[3]);
-
-    // Short year: MM/DD/YY
-    m = cleanStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
-    if (m && parseInt(m[1]) <= 12 && parseInt(m[2]) <= 31) {
-        return ymd(fixYear(m[3]), m[1], m[2]);
-    }
-
-    // Short year: MM-DD-YY
-    m = cleanStr.match(/^(\d{1,2})-(\d{1,2})-(\d{2})$/);
-    if (m && parseInt(m[1]) <= 12 && parseInt(m[2]) <= 31) {
-        return ymd(fixYear(m[3]), m[1], m[2]);
-    }
-
-    // DD-MMM-YY or DD-MMM-YYYY format (e.g., "15-Aug-2024")
-    m = cleanStr.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$/);
-    if (m) {
-        const mo = MONTHS[m[2].toLowerCase()];
-        if (mo) return ymd(fixYear(m[3]), mo, m[1]);
-    }
-
-    // Named month formats
-    m = cleanStr.match(/([A-Za-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})/i);
-    if (m) {
-        const mo = MONTHS[m[1].toLowerCase().slice(0, 3)];
-        if (mo) return ymd(m[3], mo, m[2]);
-    }
-
-    m = cleanStr.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,9}),?\s+(\d{4})$/i);
-    if (m) {
-        const mo = MONTHS[m[2].toLowerCase().slice(0, 3)];
-        if (mo) return ymd(m[3], mo, m[1]);
-    }
-
-    return '';
-}
-
-function formatExcelDate(value) {
-    return normalizeExcelDate(value);
-}
-
-function formatDateToMMDDYY(date) {
-    if (!date) return '';
-    const isoDate = normalizeExcelDate(date);
-    if (!isoDate) return '';
-    const d = new Date(isoDate);
-    if (isNaN(d.getTime())) return '';
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const year = String(d.getFullYear()).slice(-2);
-    return `${month}/${day}/${year}`;
-}
-
-function formatDisplayDate(value) {
-    if (!value || value === 'N/A') return 'N/A';
-    const isoDate = normalizeExcelDate(value);
-    if (!isoDate) return value;
-    const d = new Date(isoDate);
-    if (isNaN(d.getTime())) return value;
-    return formatDateToMMDDYY(isoDate);
-}
-
-function calculateAge(dateOfBirth) {
-    if (!dateOfBirth || dateOfBirth === 'N/A') return '';
-    const iso = normalizeExcelDate(dateOfBirth);
-    if (!iso) return '';
-    const dob = new Date(iso);
-    if (isNaN(dob.getTime())) return '';
-    const today = new Date();
-    let age = today.getFullYear() - dob.getFullYear();
-    const m = today.getMonth() - dob.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
-    return age;
-}
-
-// ============================================
-// DATE HELPER FUNCTIONS
-// ============================================
 
 window.addYears = function(years) {
     const startDate = document.getElementById('startDate').value;
@@ -363,8 +178,10 @@ function createSingleIDCardHTML(pusId, pusName, startDate, endDate, cluster, qrI
     const issueDate = new Date().toLocaleDateString();
     const displayName = toSafeString(pusName) || "N/A";
     const displayCluster = toSafeString(cluster) || "N/A";
-    const displayStartDate = formatDisplayDate(startDate);
-    const displayEndDate = formatDisplayDate(endDate);
+    // Use universal formatters
+    const displayStartDate = formatDateDisplay(startDate);
+    const displayEndDate = formatDateDisplay(endDate);
+    
     return `
         <div class="official-id-card" style="width:337px; height:212px; background:white; border-radius:12px; overflow:hidden; font-family:'Segoe UI', Arial, sans-serif; box-shadow:0 2px 5px rgba(0,0,0,0.1); position:relative; display:flex; flex-direction:column;">
             <div style="background:linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color:white; padding:6px 0; text-align:center; flex-shrink:0;">
@@ -453,11 +270,11 @@ function showQRModal(qrCanvas, clientData) {
     ctx.drawImage(qrCanvas, 0, 0, 180, 180);
     if (modalQrcode) modalQrcode.appendChild(canvas);
     
-    const ageValue = clientData.dateOfBirth ? calculateAge(clientData.dateOfBirth) : '';
-    const ageDisplay = ageValue ? `${ageValue} years` : 'N/A';
-    const displayDOB = formatDisplayDate(clientData.dateOfBirth);
-    const displayStartDate = formatDisplayDate(clientData.startDate);
-    const displayEndDate = formatDisplayDate(clientData.endDate);
+    // Use universal date formatters
+    const ageDisplay = getAgeDisplay(clientData.dateOfBirth);
+    const displayDOB = formatDateDisplay(clientData.dateOfBirth);
+    const displayStartDate = formatDateDisplay(clientData.startDate);
+    const displayEndDate = formatDateDisplay(clientData.endDate);
     
     if (modalClientInfo) {
         modalClientInfo.innerHTML = `
@@ -529,7 +346,8 @@ document.getElementById('qrForm')?.addEventListener('submit', async function(e) 
         const startDateElem = document.getElementById('startDate');
         const endDateElem = document.getElementById('endDate');
         
-        const formattedDOB = normalizeExcelDate(dateOfBirth);
+        // Use universal date normalizer
+        const formattedDOB = normalizeDate(dateOfBirth);
         
         const pusData = { 
             pusId, 
@@ -563,7 +381,6 @@ document.getElementById('qrForm')?.addEventListener('submit', async function(e) 
         }
     }
 });
-
 document.getElementById('modalDownloadQrBtn')?.addEventListener('click', function() {
     if (currentQRCanvas) {
         const pusId = document.getElementById('pusId')?.value || 'unknown';
@@ -753,20 +570,23 @@ document.getElementById('importBtn')?.addEventListener('click', async function()
             const row = data[i];
             if (progressFill) progressFill.style.width = `${((i+1)/data.length)*100}%`;
             
+            // Support various column name variations
             let dateOfBirth = row['Date of Birth'] || row['dateOfBirth'] || row['DOB'] || row['Birth Date'] || '';
             let startDate = row['Start Date'] || row['startDate'] || '';
             let endDate = row['End Date'] || row['endDate'] || '';
             
-            console.log(`Row ${i} - Raw DOB:`, dateOfBirth);
+            console.log(`Row ${i} - Raw DOB:`, dateOfBirth, 'Type:', typeof dateOfBirth);
             
-            dateOfBirth = normalizeExcelDate(dateOfBirth);
-            startDate = normalizeExcelDate(startDate);
-            endDate = normalizeExcelDate(endDate);
+            // Use universal date normalizer - handles ALL formats!
+            dateOfBirth = normalizeDate(dateOfBirth);
+            startDate = normalizeDate(startDate);
+            endDate = normalizeDate(endDate);
             
             console.log(`Row ${i} - Normalized DOB: ${dateOfBirth}, Start: ${startDate}, End: ${endDate}`);
             
+            // Validate normalized date format
             if (dateOfBirth && !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) {
-                console.warn(`Row ${i} - Invalid DOB format: ${dateOfBirth}`);
+                console.warn(`Row ${i} - Invalid DOB format after normalization: ${dateOfBirth}`);
                 dateOfBirth = '';
             }
             
@@ -819,9 +639,10 @@ function displayBatchResults(qrs) {
     if (!batchList) return;
     
     batchList.innerHTML = qrs.map((qr, index) => {
-        const ageDisplay = qr.data.dateOfBirth ? calculateAge(qr.data.dateOfBirth) : '';
+        // Use universal formatters
+        const ageDisplay = calculateAge(qr.data.dateOfBirth);
         const ageText = ageDisplay ? ` | Age: ${ageDisplay}` : '';
-        const displayDOB = formatDisplayDate(qr.data.dateOfBirth);
+        const displayDOB = formatDateDisplay(qr.data.dateOfBirth);
         return `
             <div class="batch-item-modal">
                 <div class="batch-info-modal">

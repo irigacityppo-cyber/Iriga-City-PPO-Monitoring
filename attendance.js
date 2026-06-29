@@ -13,113 +13,6 @@ const AUTHORIZED_EMAILS = [
     'irigacityppo@gmail.com'
 ];
 
-// ============================================
-// UNIVERSAL DATE NORMALIZER
-// Handles: Date objects, Excel serials, any
-// string format (MM/DD/YY, DD-Mon-YYYY, ISO, etc.)
-// ============================================
-
-function normalizeAnyDate(value) {
-    if (!value || value === 'N/A' || value === '') return '';
-
-    // Already a Date object
-    if (value instanceof Date && !isNaN(value.getTime())) {
-        return value.toISOString().split('T')[0];
-    }
-
-    // Excel serial number
-    if (typeof value === 'number' && value > 40000 && value < 60000) {
-        const d = new Date((value - 25569) * 86400 * 1000);
-        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
-    }
-
-    const str = String(value).trim();
-    if (!str) return '';
-
-    // Already YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-
-    // ISO with time
-    if (/^\d{4}-\d{2}-\d{2}T/.test(str)) return str.slice(0, 10);
-
-    // MM/DD/YY (your QR codes store this format)
-    const mmddyy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
-    if (mmddyy) {
-        const yr = parseInt(mmddyy[3]) < 30 ? 2000 + parseInt(mmddyy[3]) : 1900 + parseInt(mmddyy[3]);
-        return `${yr}-${mmddyy[1].padStart(2, '0')}-${mmddyy[2].padStart(2, '0')}`;
-    }
-
-    // MM/DD/YYYY
-    const mmddyyyy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (mmddyyyy) {
-        if (parseInt(mmddyyyy[1]) > 12) // day-first: DD/MM/YYYY
-            return `${mmddyyyy[3]}-${mmddyyyy[2].padStart(2, '0')}-${mmddyyyy[1].padStart(2, '0')}`;
-        return `${mmddyyyy[3]}-${mmddyyyy[1].padStart(2, '0')}-${mmddyyyy[2].padStart(2, '0')}`;
-    }
-
-    // DD-Mon-YYYY or DD-Mon-YY e.g. 15-Aug-2024
-    const MONTHS = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
-    const ddmonyyyy = str.match(/^(\d{1,2})[-\/\s]([A-Za-z]{3,9})[-\/\s,\s]*(\d{2,4})$/);
-    if (ddmonyyyy) {
-        const mo = MONTHS[ddmonyyyy[2].toLowerCase().slice(0, 3)];
-        if (mo) {
-            let yr = parseInt(ddmonyyyy[3]);
-            if (yr < 100) yr = yr < 30 ? 2000 + yr : 1900 + yr;
-            return `${yr}-${String(mo).padStart(2, '0')}-${ddmonyyyy[1].padStart(2, '0')}`;
-        }
-    }
-
-    // Month DD, YYYY e.g. "August 15, 1990"
-    const monddyyyy = str.match(/([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})/);
-    if (monddyyyy) {
-        const mo = MONTHS[monddyyyy[1].toLowerCase().slice(0, 3)];
-        if (mo) return `${monddyyyy[3]}-${String(mo).padStart(2, '0')}-${monddyyyy[2].padStart(2, '0')}`;
-    }
-
-    // Last resort: native Date parse (handles many locale formats)
-    const d = new Date(str);
-    if (!isNaN(d.getTime()) && d.getFullYear() > 1900 && d.getFullYear() < 2100) {
-        return d.toISOString().split('T')[0];
-    }
-
-    return str; // return as-is if nothing worked
-}
-
-// ============================================
-// UNIVERSAL AGE CALCULATOR
-// ============================================
-
-function calculateAgeFromDOB(dateOfBirth) {
-    if (!dateOfBirth || dateOfBirth === 'N/A') return 'N/A';
-    const iso = normalizeAnyDate(dateOfBirth);
-    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return 'N/A';
-    const dob = new Date(iso);
-    if (isNaN(dob.getTime())) return 'N/A';
-    const today = new Date();
-    let age = today.getFullYear() - dob.getFullYear();
-    const m = today.getMonth() - dob.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
-    return age;
-}
-
-// ============================================
-// UNIVERSAL DATE DISPLAY FORMATTER
-// ============================================
-
-function formatReadableDate(dateStr) {
-    if (!dateStr || dateStr === 'N/A') return 'N/A';
-    const iso = normalizeAnyDate(dateStr);
-    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return dateStr;
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return dateStr;
-    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-}
-
-// ============================================
-// UNIVERSAL QR PARSER
-// Handles your JSON format AND any other format
-// ============================================
-
 function parseQRData(rawText) {
     const text = rawText.trim();
 
@@ -127,10 +20,10 @@ function parseQRData(rawText) {
     try {
         const json = JSON.parse(text);
         if (json && typeof json === 'object') {
-            // Normalize every date field regardless of how it was stored
+            // Normalize every date field using universal normalizer
             const dateFields = ['dateOfBirth', 'startDate', 'endDate', 'dob', 'birthDate'];
             dateFields.forEach(f => {
-                if (json[f]) json[f] = normalizeAnyDate(json[f]);
+                if (json[f]) json[f] = normalizeDate(json[f]);
             });
             return {
                 source: 'json',
@@ -160,11 +53,11 @@ function parseQRData(rawText) {
                 pusId:           p.get('id')     || p.get('pusId')    || p.get('clientId') || '',
                 pusName:         p.get('name')   || p.get('pusName')  || p.get('fullName') || '',
                 gender:          p.get('gender') || '',
-                dateOfBirth:     normalizeAnyDate(p.get('dob') || p.get('dateOfBirth') || ''),
+                dateOfBirth:     normalizeDate(p.get('dob') || p.get('dateOfBirth') || ''),
                 offenseCategory: p.get('offense') || p.get('offenseCategory') || '',
                 caseNumber:      p.get('case')   || p.get('caseNumber') || '',
-                startDate:       normalizeAnyDate(p.get('start') || p.get('startDate') || ''),
-                endDate:         normalizeAnyDate(p.get('end')   || p.get('endDate')   || ''),
+                startDate:       normalizeDate(p.get('start') || p.get('startDate') || ''),
+                endDate:         normalizeDate(p.get('end')   || p.get('endDate')   || ''),
                 address:         p.get('address') || '',
                 supervisingOfficer: p.get('officer') || '',
                 cluster:         p.get('cluster') || '',
@@ -186,7 +79,7 @@ function parseQRData(rawText) {
             pusId:           get('UID') || get('NOTE'),
             pusName:         fn,
             gender:          '',
-            dateOfBirth:     normalizeAnyDate(bday),
+            dateOfBirth:     normalizeDate(bday),
             offenseCategory: '',
             caseNumber:      '',
             startDate:       '',
@@ -211,11 +104,11 @@ function parseQRData(rawText) {
             pusId:           kv['ps_id'] || kv['id'] || kv['client_id'] || '',
             pusName:         kv['full_name'] || kv['name'] || kv['client_name'] || '',
             gender:          kv['gender'] || '',
-            dateOfBirth:     normalizeAnyDate(kv['date_of_birth'] || kv['dob'] || kv['birth_date'] || ''),
+            dateOfBirth:     normalizeDate(kv['date_of_birth'] || kv['dob'] || kv['birth_date'] || ''),
             offenseCategory: kv['offense'] || kv['offense_category'] || '',
             caseNumber:      kv['case_number'] || kv['case_no'] || kv['criminal_case_number'] || '',
-            startDate:       normalizeAnyDate(kv['start_date'] || kv['start'] || ''),
-            endDate:         normalizeAnyDate(kv['end_date']   || kv['end']   || ''),
+            startDate:       normalizeDate(kv['start_date'] || kv['start'] || ''),
+            endDate:         normalizeDate(kv['end_date']   || kv['end']   || ''),
             address:         kv['address'] || '',
             supervisingOfficer: kv['supervising_officer'] || kv['officer'] || '',
             cluster:         kv['cluster'] || '',
@@ -223,7 +116,7 @@ function parseQRData(rawText) {
         };
     }
 
-    // ── 5. Bare text fallback — show whatever was scanned ──
+    // ── 5. Bare text fallback ──
     return {
         source: 'unknown',
         pusId:            '',
@@ -240,6 +133,18 @@ function parseQRData(rawText) {
         raw:              text
     };
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 let savedUrl = localStorage.getItem('appsScriptUrl');
 if (savedUrl && savedUrl !== APPS_SCRIPT_URL_DEFAULT) {
@@ -453,13 +358,12 @@ async function processQR(qrData) {
     const data = parseQRData(qrData);
     currentPUSData = data;
 
-    // Warn user if format wasn't the standard PPO one
     if (data.source !== 'json') {
         showMessage(`⚠️ Non-standard QR format detected (${data.source}). Some fields may be missing.`, 'info');
     }
 
-    const ageVal = data.dateOfBirth ? calculateAgeFromDOB(data.dateOfBirth) : 'N/A';
-    const ageDisplay = (ageVal !== 'N/A') ? `${ageVal} years` : 'N/A';
+    // Use universal date functions
+    const ageDisplay = getAgeDisplay(data.dateOfBirth);
 
     const setText = (id, value) => {
         const el = document.getElementById(id);
@@ -475,8 +379,9 @@ async function processQR(qrData) {
     setText('displayOfficer',    data.supervisingOfficer);
     setText('displayCluster',    data.cluster);
 
-    const startFormatted = formatReadableDate(data.startDate);
-    const endFormatted   = formatReadableDate(data.endDate);
+    // Use universal formatters
+    const startFormatted = formatDateDisplay(data.startDate);
+    const endFormatted   = formatDateDisplay(data.endDate);
     setText('displayPeriod', `${startFormatted} to ${endFormatted}`);
 
     if (pusInfoSection)  pusInfoSection.style.display  = 'block';
@@ -537,10 +442,11 @@ async function submitAttendance(e) {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Submitting...';
     
+    // Use universal date normalizer
     let calculatedAge = '';
     if (currentPUSData.dateOfBirth) {
-        const age = calculateAgeFromDOB(currentPUSData.dateOfBirth);
-        calculatedAge = age !== 'N/A' ? age.toString() : '';
+        const age = calculateAge(currentPUSData.dateOfBirth);
+        calculatedAge = age ? age.toString() : '';
     }
     
     const attendanceData = {
@@ -552,8 +458,8 @@ async function submitAttendance(e) {
         offenseCategory: currentPUSData.offenseCategory,
         caseNumber: currentPUSData.caseNumber,
         address: currentPUSData.address,
-        startDate: normalizeAnyDate(currentPUSData.startDate),
-        endDate: normalizeAnyDate(currentPUSData.endDate),
+        startDate: normalizeDate(currentPUSData.startDate),
+        endDate: normalizeDate(currentPUSData.endDate),
         supervisingOfficer: currentPUSData.supervisingOfficer,
         cluster: currentPUSData.cluster,
         remarks: document.getElementById('remarks')?.value || '',
@@ -564,9 +470,8 @@ async function submitAttendance(e) {
     };
     
     try {
-        // Add timeout to fetch to prevent hanging
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
         
         await fetch(APPS_SCRIPT_URL, {
             method: 'POST',
@@ -576,12 +481,8 @@ async function submitAttendance(e) {
         });
         
         clearTimeout(timeoutId);
-        
-        // With no-cors, we can't read response, so we assume success
-        // The Apps Script should log errors to its own sheet
         showMessage('✓ Attendance recorded successfully!', 'success');
         
-        // Clear form after successful submission
         setTimeout(() => {
             if (pusInfoSection) pusInfoSection.style.display = 'none';
             if (attendanceForm) attendanceForm.style.display = 'none';
