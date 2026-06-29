@@ -13,6 +13,124 @@ const AUTHORIZED_EMAILS = [
     'irigacityppo@gmail.com'
 ];
 
+// ============================================
+// DATE UTILITY FUNCTIONS
+// ============================================
+
+/**
+ * Normalize various date formats to YYYY-MM-DD
+ * Handles: MM/DD/YY, MM/DD/YYYY, MM-DD-YYYY, YYYY-MM-DD, etc.
+ */
+function normalizeDate(dateStr) {
+    if (!dateStr || dateStr === 'N/A' || dateStr === '') return '';
+    
+    const str = String(dateStr).trim();
+    
+    // Already in YYYY-MM-DD format
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    
+    // MM/DD/YY with year threshold (00-29 = 2000s, 30-99 = 1900s)
+    if (/^\d{2}\/\d{2}\/\d{2}$/.test(str)) {
+        const parts = str.split('/');
+        let year = parseInt(parts[2], 10);
+        year = year < 30 ? 2000 + year : 1900 + year;
+        return `${year}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+    }
+    
+    // MM/DD/YYYY
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) {
+        const parts = str.split('/');
+        return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+    }
+    
+    // MM-DD-YYYY
+    if (/^\d{2}-\d{2}-\d{4}$/.test(str)) {
+        const parts = str.split('-');
+        return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+    }
+    
+    // Try parsing as Date
+    try {
+        const date = new Date(str);
+        if (!isNaN(date.getTime())) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+    } catch (e) {
+        // ignore
+    }
+    
+    return str; // return original if can't parse
+}
+
+/**
+ * Calculate age from date of birth
+ * Returns number or null
+ */
+function calculateAge(dobStr) {
+    if (!dobStr) return null;
+    
+    try {
+        const normalized = normalizeDate(dobStr);
+        if (!normalized || normalized === 'N/A') return null;
+        
+        const parts = normalized.split('-');
+        if (parts.length !== 3) return null;
+        
+        const birthDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        if (isNaN(birthDate.getTime())) return null;
+        
+        const today = new Date();
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+            age--;
+        }
+        return age;
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Get age display string
+ */
+function getAgeDisplay(dobStr) {
+    const age = calculateAge(dobStr);
+    if (age !== null && age >= 0) {
+        return age.toString();
+    }
+    return 'N/A';
+}
+
+/**
+ * Format date for display (Month Day, Year)
+ */
+function formatDateDisplay(dateStr) {
+    if (!dateStr || dateStr === 'N/A' || dateStr === '') return 'N/A';
+    
+    const normalized = normalizeDate(dateStr);
+    if (!normalized || normalized === 'N/A') return dateStr;
+    
+    try {
+        const parts = normalized.split('-');
+        const date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        return date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+    } catch (e) {
+        return dateStr;
+    }
+}
+
+// ============================================
+// QR PARSING
+// ============================================
+
 function parseQRData(rawText) {
     const text = rawText.trim();
 
@@ -134,17 +252,9 @@ function parseQRData(rawText) {
     };
 }
 
-
-
-
-
-
-
-
-
-
-
-
+// ============================================
+// APP STATE
+// ============================================
 
 let savedUrl = localStorage.getItem('appsScriptUrl');
 if (savedUrl && savedUrl !== APPS_SCRIPT_URL_DEFAULT) {
@@ -157,6 +267,7 @@ let currentUser = null;
 let currentPUSData = null;
 let videoStream = null;
 let scanning = false;
+let scanTimeout = null;
 
 // DOM Elements
 const loginSection = document.getElementById('loginSection');
@@ -178,6 +289,10 @@ const scriptUrlInput = document.getElementById('scriptUrlInput');
 const saveUrlBtn = document.getElementById('saveUrlBtn');
 const resetUrlBtn = document.getElementById('resetUrlBtn');
 const adminLink = document.getElementById('adminLink');
+
+// ============================================
+// GOOGLE SIGN-IN
+// ============================================
 
 function initGoogleSignIn() {
     google.accounts.id.initialize({
@@ -231,7 +346,7 @@ function handleCredentialResponse(response) {
 }
 
 // ============================================
-// FIXED checkSession() with try/catch
+// SESSION MANAGEMENT
 // ============================================
 
 function checkSession() {
@@ -280,37 +395,104 @@ function logout() {
 
 logoutBtn?.addEventListener('click', logout);
 
+// ============================================
+// UPGRADED openScanner() with camera optimization
+// ============================================
+
 async function openScanner() {
     if (!APPS_SCRIPT_URL) {
         showMessage('Please configure Google Apps Script URL in Settings', 'error');
         configSection.style.display = 'block';
         return;
     }
-    
+
     scannerModal.style.display = 'flex';
+
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        // Request best possible camera constraints for QR scanning
+        const constraints = {
+            video: {
+                facingMode: { ideal: 'environment' },  // rear camera
+                width:  { ideal: 1280 },
+                height: { ideal: 720 },
+                focusMode: { ideal: 'continuous' },     // continuous autofocus
+                advanced: [{ focusMode: 'continuous' }]
+            }
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         scannerVideo.srcObject = stream;
         videoStream = stream;
+
+        // Apply advanced track constraints after stream starts
+        const [track] = stream.getVideoTracks();
+        if (track) {
+            const capabilities = track.getCapabilities?.() || {};
+
+            const advancedConstraints = {};
+
+            // Enable continuous autofocus if supported
+            if (capabilities.focusMode?.includes('continuous')) {
+                advancedConstraints.focusMode = 'continuous';
+            }
+
+            // Maximize zoom out for wider QR detection range
+            if (capabilities.zoom) {
+                advancedConstraints.zoom = capabilities.zoom.min;
+            }
+
+            // Boost exposure for better contrast (helps QR scanning in dim light)
+            if (capabilities.exposureMode?.includes('continuous')) {
+                advancedConstraints.exposureMode = 'continuous';
+            }
+
+            if (Object.keys(advancedConstraints).length > 0) {
+                await track.applyConstraints({ advanced: [advancedConstraints] });
+            }
+        }
+
         await scannerVideo.play();
         scanning = true;
         scanQR();
+
     } catch (err) {
-        showMessage('Camera access denied. Please allow camera permissions.', 'error');
-        closeScanner();
+        console.error('Camera error:', err);
+
+        // Fallback: try with minimal constraints if advanced ones failed
+        try {
+            showMessage('Retrying with basic camera...', 'info');
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment' }
+            });
+            scannerVideo.srcObject = stream;
+            videoStream = stream;
+            await scannerVideo.play();
+            scanning = true;
+            scanQR();
+        } catch (fallbackErr) {
+            showMessage('Camera access denied. Please allow camera permissions.', 'error');
+            closeScanner();
+        }
     }
 }
+
+// ============================================
+// UPGRADED scanQR() with throttling for performance
+// ============================================
 
 function scanQR() {
     if (!scanning) return;
 
     if (scannerVideo.readyState === scannerVideo.HAVE_ENOUGH_DATA) {
         const canvas = document.createElement('canvas');
-        canvas.width = scannerVideo.videoWidth;
-        canvas.height = scannerVideo.videoHeight;
+        const video = scannerVideo;
 
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(scannerVideo, 0, 0);
+        // Scan at native resolution for better QR detection
+        canvas.width  = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(video, 0, 0);
 
         const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
@@ -320,7 +502,9 @@ function scanQR() {
             return;
         }
 
-        const code = jsQR(imgData.data, canvas.width, canvas.height);
+        const code = jsQR(imgData.data, canvas.width, canvas.height, {
+            inversionAttempts: 'dontInvert'  // faster — skips inverted QR attempts
+        });
 
         if (code) {
             scanning = false;
@@ -330,11 +514,21 @@ function scanQR() {
         }
     }
 
-    requestAnimationFrame(scanQR);
+    // Throttle to ~15fps instead of 60fps — reduces CPU load, helps older phones
+    scanTimeout = setTimeout(() => requestAnimationFrame(scanQR), 66);
 }
+
+// ============================================
+// CLOSE SCANNER
+// ============================================
 
 function closeScanner() {
     scanning = false;
+
+    if (scanTimeout) {
+        clearTimeout(scanTimeout);
+        scanTimeout = null;
+    }
 
     if (videoStream) {
         videoStream.getTracks().forEach(track => track.stop());
@@ -349,7 +543,7 @@ function closeScanner() {
 }
 
 // ============================================
-// DROP-IN REPLACEMENT FOR processQR()
+// PROCESS QR
 // ============================================
 
 async function processQR(qrData) {
@@ -394,7 +588,7 @@ async function processQR(qrData) {
 }
 
 // ============================================
-// FIXED showMessage() with unique IDs and safe removal
+// SHOW MESSAGE
 // ============================================
 
 function showMessage(msg, type) {
@@ -420,7 +614,7 @@ function showMessage(msg, type) {
 }
 
 // ============================================
-// IMPROVED submitAttendance() with better error handling
+// SUBMIT ATTENDANCE
 // ============================================
 
 async function submitAttendance(e) {
@@ -446,7 +640,7 @@ async function submitAttendance(e) {
     let calculatedAge = '';
     if (currentPUSData.dateOfBirth) {
         const age = calculateAge(currentPUSData.dateOfBirth);
-        calculatedAge = age ? age.toString() : '';
+        calculatedAge = age !== null ? age.toString() : '';
     }
     
     const attendanceData = {
@@ -502,6 +696,10 @@ async function submitAttendance(e) {
     }
 }
 
+// ============================================
+// EVENT LISTENERS
+// ============================================
+
 adminLink?.addEventListener('click', (e) => {
     e.preventDefault();
     if (configSection) {
@@ -541,7 +739,13 @@ if (resetUrlBtn) {
 
 scannerTrigger?.addEventListener('click', openScanner);
 attendanceForm?.addEventListener('submit', submitAttendance);
+
+// Make closeScanner globally available for the close button in modal
 window.closeScanner = closeScanner;
+
+// ============================================
+// INITIALIZE
+// ============================================
 
 checkSession();
 
