@@ -753,7 +753,6 @@ document.getElementById('massPrintCardsBtnModal')?.addEventListener('click', fun
                 <div class="print-card-item">
                     <div class="cut-border">
                         ${createSingleIDCardHTML(qr.data.pusId, qr.data.pusName, qr.data.startDate, qr.data.endDate, qr.data.cluster, qr.imageUrl)}
-                        <!-- Corner cut marks -->
                         <div class="cut-corner top-left"></div>
                         <div class="cut-corner top-right"></div>
                         <div class="cut-corner bottom-left"></div>
@@ -785,17 +784,15 @@ document.getElementById('massPrintCardsBtnModal')?.addEventListener('click', fun
                 break-inside: avoid;
             }
 
-            /* Dashed cut border around each card */
+            /* FIX: removed line-height: 0 */
             .cut-border {
                 position: relative;
                 display: inline-block;
                 border: 1.5px dashed #999;
                 border-radius: 13px;
                 padding: 0;
-                line-height: 0;
             }
 
-            /* Corner scissor marks */
             .cut-corner {
                 position: absolute;
                 width: 10px;
@@ -809,7 +806,6 @@ document.getElementById('massPrintCardsBtnModal')?.addEventListener('click', fun
             .cut-corner.bottom-left  { bottom: -3px; left: -3px;  border-width: 0 0 2px 2px; border-radius: 0 0 0 3px; }
             .cut-corner.bottom-right { bottom: -3px; right: -3px; border-width: 0 2px 2px 0; border-radius: 0 0 3px 0; }
 
-            /* Scissors icon label */
             .cut-border::before {
                 content: '✂';
                 position: absolute;
