@@ -738,11 +738,9 @@ document.getElementById('massDownloadCardsBtnModal')?.addEventListener('click', 
 // ============================================
 // MASS PRINT CARDS - UPDATED FOR 8 CARDS PER PAGE
 // ============================================
-
 document.getElementById('massPrintCardsBtnModal')?.addEventListener('click', function() {
     if (batchQRs.length === 0) { alert('No batch QR codes to print'); return; }
     
-    // Set to 8 cards per page (2 columns × 4 rows)
     const cardsPerPage = 8;
     let pagesHtml = '';
     
@@ -751,7 +749,17 @@ document.getElementById('massPrintCardsBtnModal')?.addEventListener('click', fun
         let gridItems = '';
         for (let j = 0; j < pageCards.length; j++) {
             const qr = pageCards[j];
-            gridItems += `<div class="print-card-item">${createSingleIDCardHTML(qr.data.pusId, qr.data.pusName, qr.data.startDate, qr.data.endDate, qr.data.cluster, qr.imageUrl)}</div>`;
+            gridItems += `
+                <div class="print-card-item">
+                    <div class="cut-border">
+                        ${createSingleIDCardHTML(qr.data.pusId, qr.data.pusName, qr.data.startDate, qr.data.endDate, qr.data.cluster, qr.imageUrl)}
+                        <!-- Corner cut marks -->
+                        <div class="cut-corner top-left"></div>
+                        <div class="cut-corner top-right"></div>
+                        <div class="cut-corner bottom-left"></div>
+                        <div class="cut-corner bottom-right"></div>
+                    </div>
+                </div>`;
         }
         pagesHtml += `<div class="print-page"><div class="print-id-grid">${gridItems}</div></div>`;
     }
@@ -760,58 +768,83 @@ document.getElementById('massPrintCardsBtnModal')?.addEventListener('click', fun
     if (printWindow) {
         printWindow.document.write(`<!DOCTYPE html><html><head><title>Iriga PPO ID Cards</title><style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { background: white; padding: 0.1in; margin: 0; font-family: 'Segoe UI', Arial, sans-serif; }
+            body { background: white; padding: 0.2in; margin: 0; font-family: 'Segoe UI', Arial, sans-serif; }
+
             .print-id-grid { 
                 display: grid; 
                 grid-template-columns: repeat(2, 1fr);
-                grid-template-rows: repeat(4, auto);
-                gap: 8px 16px;
+                gap: 24px 32px;
                 justify-content: center;
-                max-width: 100%;
                 margin: 0 auto;
                 width: fit-content;
             }
+
             .print-card-item { 
                 width: 337px; 
-                height: 212px; 
                 page-break-inside: avoid; 
                 break-inside: avoid;
-                margin: 0 auto;
             }
+
+            /* Dashed cut border around each card */
+            .cut-border {
+                position: relative;
+                display: inline-block;
+                border: 1.5px dashed #999;
+                border-radius: 13px;
+                padding: 0;
+                line-height: 0;
+            }
+
+            /* Corner scissor marks */
+            .cut-corner {
+                position: absolute;
+                width: 10px;
+                height: 10px;
+                border-color: #555;
+                border-style: solid;
+                z-index: 10;
+            }
+            .cut-corner.top-left     { top: -3px; left: -3px;  border-width: 2px 0 0 2px; border-radius: 3px 0 0 0; }
+            .cut-corner.top-right    { top: -3px; right: -3px; border-width: 2px 2px 0 0; border-radius: 0 3px 0 0; }
+            .cut-corner.bottom-left  { bottom: -3px; left: -3px;  border-width: 0 0 2px 2px; border-radius: 0 0 0 3px; }
+            .cut-corner.bottom-right { bottom: -3px; right: -3px; border-width: 0 2px 2px 0; border-radius: 0 0 3px 0; }
+
+            /* Scissors icon label */
+            .cut-border::before {
+                content: '✂';
+                position: absolute;
+                top: -11px;
+                left: 6px;
+                font-size: 10px;
+                color: #888;
+                background: white;
+                padding: 0 3px;
+                line-height: 1;
+            }
+
             .print-page { 
                 page-break-after: always; 
                 break-after: page; 
-                margin-bottom: 0;
                 display: flex;
                 justify-content: center;
+                padding: 10px 0;
             }
             .print-page:last-child { 
                 page-break-after: auto; 
                 break-after: auto; 
             }
+
             @media print { 
-                body { padding: 0.08in; } 
+                body { padding: 0.15in; }
                 .print-page { page-break-after: always; } 
-                .print-page:last-child { page-break-after: auto; } 
-                .print-id-grid { gap: 6px 14px; }
-                .print-card-item { 
-                    transform: scale(0.98);
-                    transform-origin: center;
-                }
+                .print-page:last-child { page-break-after: auto; }
+                .cut-border { border-color: #aaa; }
+                .cut-corner { border-color: #666; }
             }
+
             @page { 
                 size: letter portrait; 
                 margin: 0.1in;
-            }
-            @media screen and (max-width: 800px) {
-                .print-id-grid {
-                    grid-template-columns: 1fr;
-                    grid-template-rows: auto;
-                }
-                .print-card-item {
-                    transform: scale(0.8);
-                    transform-origin: center;
-                }
             }
         </style></head><body>${pagesHtml}</body></html>`);
         printWindow.document.close();
