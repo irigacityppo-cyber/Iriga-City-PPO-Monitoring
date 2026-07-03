@@ -2,7 +2,7 @@
 // IRIGA PPO - ATTENDANCE SYSTEM
 // ============================================
 
-const GOOGLE_CLIENT_ID = '615931175551-cnd4ocg43ktu56jpmhdm9ulmbn5tedq1.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = '730462253609-l1qob7a4mpeuup1jprlu08417mlvng0j.apps.googleusercontent.com';
 const APPS_SCRIPT_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycby-IpivdteRINmaw4F6ga8sEhGvfnj51VHjIHZKly4gWGgDy7nvpsh4nbjqA8W9VZQL/exec';
 
 const AUTHORIZED_EMAILS = [
